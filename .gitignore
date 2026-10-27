@@ -39,3 +39,4 @@ next-env.d.ts
 # Local attachments and QA screenshots
 /.codex-attachments/
 /artifacts/
+/supabase/.temp/

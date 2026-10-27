@@ -10,8 +10,9 @@ export const hexColorSchema = z
 
 export const nonNegativeIntSchema = z
   .number({
-    invalid_type_error: "Debe ser un número entero válido",
-    required_error: "Este campo es obligatorio",
+    error: (issue) => issue.input === undefined
+      ? "Este campo es obligatorio"
+      : "Debe ser un número entero válido",
   })
   .int("Solo se permiten números enteros de puntos")
   .min(0, "La cantidad de puntos no puede ser negativa")
@@ -48,6 +49,10 @@ export const createSellerSchema = z.object({
 
 export const updateSellerSchema = createSellerSchema.partial().extend({
   id: z.string().uuid("ID de vendedor inválido"),
+  // Una edición parcial no debe restablecer valores omitidos con los defaults de creación.
+  is_active: z.boolean().optional(),
+  show_on_board: z.boolean().optional(),
+  display_order: z.number().int().min(0).max(999).optional(),
 });
 
 export const updateManagerSettingsSchema = z.object({

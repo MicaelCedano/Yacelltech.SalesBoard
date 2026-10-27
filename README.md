@@ -38,14 +38,15 @@ Diseñado con una interfaz minimalista inspirada en Apple: fondo claro `#F5F5F7`
 2. Abre el **SQL Editor** en tu proyecto de Supabase.
 3. Copia y ejecuta el contenido completo de:
    - `supabase/migrations/0001_initial_schema.sql`
+   - `supabase/migrations/20261027224406_hosted_security.sql`
    - `supabase/seed_demo.sql` *(opcional: instala la función segura `public.initialize_demo_salesboard()`)*
 
 ### 3.2 Configurar la Autenticación (Sin registro público)
 
 1. En Supabase Dashboard ve a **Authentication → Providers → Email**.
 2. Para impedir el registro público de administradores, desactiva **Allow new users to sign up** (o crea únicamente los usuarios administradores desde **Authentication → Users → Add user**).
-3. Al crear tu usuario administrador en **Authentication → Users**, el trigger `on_auth_user_created` creará automáticamente su registro en `public.profiles` con `role = 'admin'`.
-4. Si deseas verificar o promover manualmente un usuario a administrador desde el SQL Editor:
+3. Crea tu usuario en **Authentication → Users**. El trigger crea su perfil con `role = 'viewer'`; los metadatos enviados por un cliente no pueden otorgar administración.
+4. Promueve exclusivamente tu usuario administrador desde el SQL Editor:
    ```sql
    UPDATE public.profiles
    SET role = 'admin', is_active = TRUE
@@ -93,6 +94,24 @@ npm start
 ```
 
 > **Modo Demostración Local Aislado:** Si ejecutas el proyecto localmente antes de configurar `.env.local` con Supabase, el sistema activa automáticamente un entorno de demostración aislado (con los 5 vendedores de prueba: *Luis, José, Carlos, Ana y María*) sin mezclar datos con producción. Credenciales locales de prueba en `/admin`: `admin@yacelltech.com` / `Yacell2026!`.
+
+En producción, Supabase es obligatorio: el servidor rechaza el modo demo y las cookies locales de demostración. Los datos alojados se guardan en PostgreSQL y las fotografías en Storage.
+
+### Despliegue en Netlify
+
+Importa este repositorio con la rama `main`. `netlify.toml` configura Node.js 22, el comando `npm run build` y la carpeta `.next`; Netlify instala automáticamente su adaptador de Next.js para las páginas y APIs del servidor. No publiques el código fuente como un sitio estático.
+
+Antes de desplegar, configura estas variables en **Project configuration → Environment variables**, disponibles durante la compilación y en Functions:
+
+- `NEXT_PUBLIC_SUPABASE_URL`: URL del proyecto dedicado de SalesBoard.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: clave publicable del proyecto (también se admite la clave `anon` heredada). Nunca uses una clave secreta en esta variable.
+- `NEXT_PUBLIC_SITE_URL`: URL HTTPS de Netlify.
+- `NEXT_PUBLIC_TIMEZONE`: `America/Santo_Domingo`.
+- `NEXT_PUBLIC_ENABLE_DEMO_FALLBACK`: `false`.
+
+Aplica las dos migraciones antes de abrir el tablero. El archivo `supabase/seed_demo.sql` instala una función de datos de prueba que solo puede ejecutar un administrador autenticado; no carga datos automáticamente. El proyecto no necesita `SUPABASE_SERVICE_ROLE_KEY` para funcionar.
+
+En Supabase configura la URL de Netlify en **Authentication → URL Configuration**, desactiva el registro público y crea/promueve el usuario administrador como se describe arriba. Después del despliegue verifica `/`, `/admin` y `/api/board`; la API debe indicar `dataSource: "supabase"`. Las APIs administrativas deben devolver `403` sin sesión.
 
 ---
 

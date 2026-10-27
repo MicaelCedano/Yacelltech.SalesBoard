@@ -8,7 +8,7 @@
 CREATE OR REPLACE FUNCTION public.initialize_demo_salesboard(target_date DATE DEFAULT CURRENT_DATE)
 RETURNS JSONB
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = public
 AS $$
 DECLARE
@@ -19,8 +19,8 @@ DECLARE
   v_maria UUID;
   v_jose UUID;
 BEGIN
-  -- Verificar que el usuario sea administrador (si hay sesión activa)
-  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+  -- Toda llamada requiere una sesión real y autorización de administrador.
+  IF auth.uid() IS NULL OR NOT public.is_admin() THEN
     RAISE EXCEPTION 'Acceso denegado: Solo un administrador puede inicializar la demostración.';
   END IF;
 
@@ -105,3 +105,6 @@ BEGIN
   );
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.initialize_demo_salesboard(DATE) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.initialize_demo_salesboard(DATE) TO authenticated;
