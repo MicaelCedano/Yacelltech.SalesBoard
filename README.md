@@ -8,7 +8,7 @@ Diseñado con una interfaz minimalista inspirada en Apple: fondo claro `#F5F5F7`
 
 ## 1. Stack Tecnológico
 
-- **Framework:** Next.js 16 (App Router) + React 19
+- **Framework:** Next.js 15 (App Router) + React 19
 - **Lenguaje:** TypeScript (Modo estricto `strict: true`)
 - **Estilos y UI:** Tailwind CSS + Radix UI (`shadcn/ui` primitives) + Lucide Icons
 - **Animaciones:** Motion (`motion/react`)
@@ -113,6 +113,10 @@ Antes de desplegar, configura estas variables en **Project configuration → Env
 Aplica las tres migraciones antes de abrir el tablero. El archivo `supabase/seed_demo.sql` instala una función de datos de prueba que solo puede ejecutar un administrador autenticado; no carga datos automáticamente. El proyecto no necesita `SUPABASE_SERVICE_ROLE_KEY` para funcionar.
 
 En Supabase configura la URL de Netlify en **Authentication → URL Configuration**, desactiva el registro público y crea/promueve el usuario administrador como se describe arriba. Después del despliegue verifica `/`, `/admin` y `/api/board`; la API debe indicar `dataSource: "supabase"`. Las APIs administrativas deben devolver `403` sin sesión.
+
+Instancia de pruebas configurada el 27 de octubre de 2026: [tablero público](https://yacelltechsalesboard.netlify.app/) y [administración](https://yacelltechsalesboard.netlify.app/admin), conectados al proyecto Supabase `upeozwaiunpzxzfrdcja`. Se importaron 7 vendedores, las 8 fotografías originales, 21 registros diarios y 4 metas desde el modo local; los registros importados se protegen como datos reales para impedir que la inicialización demo los sobrescriba. La importación quedó registrada en la auditoría como `LOCAL_DATA_IMPORTED`.
+
+Pendiente detectado en esa verificación: Netlify registra un error recuperable de hidratación de React (`#418`) al cargar la página. Se comprobaron el inicio de sesión, los filtros, las fotografías, los totales y la actualización automática; la causa del aviso no está confirmada. No se reprodujo en el servidor local con la misma base. La actualización de framework, la entrega anticipada de metadatos y la retirada del distintivo de Netlify no lo eliminaron y se descartaron esos cambios de prueba.
 
 ---
 
