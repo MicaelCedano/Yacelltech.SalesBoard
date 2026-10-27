@@ -37,7 +37,7 @@ export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBo
   return (
     <main className="public-board" data-tv={isTvMode}>
       <header className="board-header">
-        <div className="board-wordmark"><YacellTechLogo className="board-brand-logo" /><div className="board-brand-copy"><span>SalesBoard</span>{storeName.toLowerCase() !== "yacelltech" && <small>{storeName}</small>}</div></div>
+        <div className="board-wordmark"><YacellTechLogo className="board-brand-logo" />{storeName.toLowerCase() !== "yacelltech" && <div className="board-brand-copy"><small>{storeName}</small></div>}</div>
         <div className="board-header-right">
           <div className="board-date"><span>{formatLongDateSantoDomingo(today)}</span><small><span className="connection-dot" data-connected={connectionStatus === "connected"} />{connectionStatus === "reconnecting" ? "Reconectando…" : `Actualizado ${formatTimeSantoDomingo(snapshot.lastUpdatedIso)}`}</small></div>
           <div className="board-controls">
