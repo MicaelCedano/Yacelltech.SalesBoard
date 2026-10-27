@@ -8,7 +8,7 @@ Diseñado con una interfaz minimalista inspirada en Apple: fondo claro `#F5F5F7`
 
 ## 1. Stack Tecnológico
 
-- **Framework:** Next.js 15 (App Router) + React 19
+- **Framework:** Next.js 16 (App Router) + React 19
 - **Lenguaje:** TypeScript (Modo estricto `strict: true`)
 - **Estilos y UI:** Tailwind CSS + Radix UI (`shadcn/ui` primitives) + Lucide Icons
 - **Animaciones:** Motion (`motion/react`)
@@ -39,6 +39,7 @@ Diseñado con una interfaz minimalista inspirada en Apple: fondo claro `#F5F5F7`
 3. Copia y ejecuta el contenido completo de:
    - `supabase/migrations/0001_initial_schema.sql`
    - `supabase/migrations/20261027224406_hosted_security.sql`
+   - `supabase/migrations/20261027230618_restrict_storage_listing_and_internal_function.sql`
    - `supabase/seed_demo.sql` *(opcional: instala la función segura `public.initialize_demo_salesboard()`)*
 
 ### 3.2 Configurar la Autenticación (Sin registro público)
@@ -109,7 +110,7 @@ Antes de desplegar, configura estas variables en **Project configuration → Env
 - `NEXT_PUBLIC_TIMEZONE`: `America/Santo_Domingo`.
 - `NEXT_PUBLIC_ENABLE_DEMO_FALLBACK`: `false`.
 
-Aplica las dos migraciones antes de abrir el tablero. El archivo `supabase/seed_demo.sql` instala una función de datos de prueba que solo puede ejecutar un administrador autenticado; no carga datos automáticamente. El proyecto no necesita `SUPABASE_SERVICE_ROLE_KEY` para funcionar.
+Aplica las tres migraciones antes de abrir el tablero. El archivo `supabase/seed_demo.sql` instala una función de datos de prueba que solo puede ejecutar un administrador autenticado; no carga datos automáticamente. El proyecto no necesita `SUPABASE_SERVICE_ROLE_KEY` para funcionar.
 
 En Supabase configura la URL de Netlify en **Authentication → URL Configuration**, desactiva el registro público y crea/promueve el usuario administrador como se describe arriba. Después del despliegue verifica `/`, `/admin` y `/api/board`; la API debe indicar `dataSource: "supabase"`. Las APIs administrativas deben devolver `403` sin sesión.
 
