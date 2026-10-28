@@ -1,0 +1,55 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { POST } from "@/app/api/admin/sales/route";
+import { GET } from "@/app/api/admin/reports/route";
+import { verifyServerAdminSession, getSupabaseServerClient } from "@/lib/supabase/server";
+import { readDemoDatabase, writeDemoDatabase, createSeedDemoDatabase } from "@/lib/demo-store";
+import { saveBatchDailySales } from "@/lib/data-service";
+import { batchSaveDailySalesSchema } from "@/lib/validations";
+import { getSantoDomingoToday } from "@/lib/date-utils";
+
+vi.mock("@/lib/supabase/server", () => ({ verifyServerAdminSession: vi.fn(), getSupabaseServerClient: vi.fn() }));
+vi.mock("@/lib/demo-store", async (original) => ({ ...await original<typeof import("@/lib/demo-store")>(), readDemoDatabase: vi.fn(), writeDemoDatabase: vi.fn() }));
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(getSupabaseServerClient).mockResolvedValue(null);
+  vi.mocked(verifyServerAdminSession).mockResolvedValue({ isAdmin: true, userId: "admin", email: "admin@example.com", mode: "demo-local" });
+  vi.mocked(readDemoDatabase).mockReturnValue(createSeedDemoDatabase("daily_34_of_50"));
+});
+
+describe("Permisos, validación y sumas locales", () => {
+  it("no permite guardar ni exportar sin administrador", async () => {
+    vi.mocked(verifyServerAdminSession).mockResolvedValue({ isAdmin: false, userId: null, email: null, mode: "demo-local" });
+    expect((await POST(new NextRequest("http://localhost/api/admin/sales", { method: "POST", body: "{}" }))).status).toBe(403);
+    expect((await GET(new NextRequest("http://localhost/api/admin/reports?startDate=2026-10-01&endDate=2026-10-27&format=xlsx"))).status).toBe(403);
+    expect(readDemoDatabase).not.toHaveBeenCalled();
+  });
+  it("rechaza rangos inválidos y formatos que no están permitidos", async () => {
+    expect((await GET(new NextRequest("http://localhost/api/admin/reports?startDate=2026-10-30&endDate=2026-10-01"))).status).toBe(400);
+    expect((await GET(new NextRequest("http://localhost/api/admin/reports?startDate=2026-10-01&endDate=2026-10-27&format=html"))).status).toBe(400);
+    expect(readDemoDatabase).not.toHaveBeenCalled();
+  });
+  it("suma y reintenta sin duplicar en demo, y registra el incremento exacto", async () => {
+    const db = readDemoDatabase(); const seller = db.sellers[0]!;
+    const date = getSantoDomingoToday();
+    const before = db.dailySales.find((sale) => sale.sale_date === date && sale.seller_id === seller.id)!.units_sold;
+    const input = batchSaveDailySalesSchema.parse({ request_id: crypto.randomUUID(), mode: "add", sale_date: date, general_goal: 50,
+      entries: [{ seller_id: seller.id, units_sold: 7, individual_goal: seller.individual_goal, expected_version: 0 }] });
+    const actor = { userId: "admin", email: "admin@example.com" };
+    await saveBatchDailySales(input, actor); await saveBatchDailySales(input, actor);
+    expect(db.dailySales.find((sale) => sale.sale_date === date && sale.seller_id === seller.id)!.units_sold).toBe(before + 7);
+    expect(db.auditLogs.filter((log) => log.id === input.request_id)).toHaveLength(1);
+    expect(writeDemoDatabase).toHaveBeenCalledTimes(1);
+    const response = await GET(new NextRequest(`http://localhost/api/admin/reports?startDate=${date}&endDate=${date}`));
+    expect(response.status).toBe(200);
+    expect((await response.json()).movements).toContainEqual(expect.objectContaining({ sellerId: seller.id, points: 7, type: "Suma" }));
+  });
+  it("devuelve un archivo XLSX descargable desde la API", async () => {
+    const date = getSantoDomingoToday();
+    const response = await GET(new NextRequest(`http://localhost/api/admin/reports?startDate=${date}&endDate=${date}&format=xlsx`));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("spreadsheetml");
+    expect(response.headers.get("Content-Disposition")).toContain(`YacellTech-puntos-${date}-a-${date}.xlsx`);
+    expect(Array.from(new Uint8Array(await response.arrayBuffer()).slice(0, 2))).toEqual([80, 75]);
+  });
+});

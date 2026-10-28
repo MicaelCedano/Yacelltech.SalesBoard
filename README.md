@@ -151,6 +151,16 @@ Las pruebas de `src/lib/__tests__/seller-photos.test.ts` verifican permisos de s
 
 ## 7. Apariencia y uso en televisión
 
+### Registro por sumas y reportes de puntos
+
+- **Registro diario → Sumar puntos** es la operación predeterminada: escribe únicamente los puntos nuevos para la fecha seleccionada. Si ya tiene 10 y aplicas 7, el día queda en 17. Los campos vuelven a cero tras confirmar el guardado. Cada solicitud tiene un identificador para que los reintentos no dupliquen puntos; si no se puede confirmar, la pantalla conserva la operación y permite reintentar.
+- **Corregir total del día** reemplaza el total de esa fecha y exige la versión vigente para evitar sobrescrituras. La auditoría conserva el antes y el después, incluidos ajustes negativos.
+- El tablero público abre en **Este mes**: suma las cantidades de cada día desde el primero del mes hasta hoy en Santo Domingo. Los filtros siguen disponibles fuera del modo TV. Las metas por período conservan su cálculo existente a partir de las metas diarias.
+- **Reportes / Excel** permite seleccionar un rango de hasta 366 días, con ambos extremos incluidos. La vista y el `.xlsx` incluyen todos los vendedores, también inactivos u ocultos en TV. El archivo contiene **Resumen**, **Puntos por día**, **Detalle diario** y **Movimientos**; distingue celdas sin registro de ceros guardados y guarda los puntos y las fechas con tipos nativos de Excel.
+- Los totales diarios son la fuente del reporte. La hoja de movimientos se construye con la auditoría disponible y no inventa aplicaciones individuales para datos anteriores que carezcan de ese desglose. Las fechas de puntos y las fechas de aplicación se muestran separadas.
+- El guardado alojado requiere `supabase/migrations/20261028024623_daily_points_additive.sql`: instala `public.apply_daily_points`, con transacción, control de concurrencia y verificación de administrador. No modifica los registros existentes. En este proyecto las migraciones previas se aplicaron manualmente desde SQL Editor, sin tabla de historial de Supabase CLI; mantener el mismo procedimiento para instalaciones existentes.
+- Verificación: `npm test` incluye pruebas contra PostgreSQL embebido (PGlite), permisos de API, sumas, reintentos, correcciones, reversión por errores, rangos inclusivos y lectura del XLSX generado.
+
 La unidad visible del tablero y la administración es **Puntos**. El cambio de denominación conserva los registros, las cantidades y los cálculos existentes.
 
 - El botón de luna/sol cambia entre claro y oscuro. La preferencia se conserva localmente y se sincroniza entre pestañas. El modo claro es el predeterminado.

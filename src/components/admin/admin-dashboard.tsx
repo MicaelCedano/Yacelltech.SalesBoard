@@ -20,6 +20,7 @@ import { broadcastBoardUpdate } from "@/hooks/use-salesboard-realtime";
 import { ThemeToggle } from "@/components/ui/appearance-provider";
 import { YacellTechLogo } from "@/components/ui/yacelltech-logo";
 import { SellerPhotoField } from "@/components/admin/seller-photo-field";
+import { PointsReports } from "@/components/admin/points-reports";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,7 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-type AdminTab = "daily" | "sellers" | "manager" | "audit";
+type AdminTab = "daily" | "reports" | "sellers" | "manager" | "audit";
 
 interface EditableDailyRow {
   seller_id: string;
@@ -41,6 +42,7 @@ interface EditableDailyRow {
   is_active: boolean;
   show_on_board: boolean;
   units_sold: number;
+  points_to_add: number;
   individual_goal: number;
   expected_version: number;
 }
@@ -65,6 +67,12 @@ export function AdminDashboard({
   );
   const [isLoadingDate, setIsLoadingDate] = useState(false);
   const [isSavingDaily, setIsSavingDaily] = useState(false);
+  const [dailyMode, setDailyMode] = useState<"add" | "set">("add");
+  const [loadedDailyDate, setLoadedDailyDate] = useState<string | null>(null);
+  const [dailyRetryPending, setDailyRetryPending] = useState(false);
+  const dailySaveRef = useRef(false);
+  const dailyLoadRef = useRef(0);
+  const dailyRequestRef = useRef<{ request_id: string; mode: "add" | "set"; sale_date: string; general_goal: number; entries: { seller_id: string; units_sold: number; individual_goal: number; expected_version: number }[] } | null>(null);
 
   // Filtro de consulta histórica (Sección 8)
   const [historyPreset, setHistoryPreset] = useState<DateFilterPreset>("today");
@@ -149,6 +157,7 @@ export function AdminDashboard({
         is_active: item.seller.is_active,
         show_on_board: item.seller.show_on_board,
         units_sold: item.unitsSold,
+        points_to_add: 0,
         individual_goal: item.effectiveGoal,
         expected_version: item.recordVersion,
       }))
@@ -159,7 +168,9 @@ export function AdminDashboard({
   // Cargar datos para la fecha seleccionada en Registro Diario
   const loadDailyData = useCallback(
     async (dateStr: string) => {
+      const loadId = ++dailyLoadRef.current;
       setIsLoadingDate(true);
+      setLoadedDailyDate(null);
       try {
         const res = await fetch(
           `/api/board?preset=custom&startDate=${dateStr}&endDate=${dateStr}`,
@@ -167,15 +178,18 @@ export function AdminDashboard({
         );
         if (!res.ok) throw new Error("No se pudo cargar la fecha seleccionada");
         const data = (await res.json()) as SalesBoardSnapshot;
+        if (loadId !== dailyLoadRef.current) return;
         setSnapshot(data);
         syncRowsFromSnapshot(data);
+        setLoadedDailyDate(dateStr);
       } catch (err) {
+        if (loadId !== dailyLoadRef.current) return;
         showNotification(
           "error",
           err instanceof Error ? err.message : "Error al consultar fecha"
         );
       } finally {
-        setIsLoadingDate(false);
+        if (loadId === dailyLoadRef.current) setIsLoadingDate(false);
       }
     },
     [showNotification, syncRowsFromSnapshot]
@@ -228,8 +242,8 @@ export function AdminDashboard({
 
   // Cálculo automático en vivo del total del Manager mientras el admin edita la tabla
   const liveManagerTotal = useMemo(() => {
-    return rows.reduce((sum, r) => sum + (Number.isFinite(r.units_sold) ? r.units_sold : 0), 0);
-  }, [rows]);
+    return rows.reduce((sum, r) => sum + (Number.isFinite(r.units_sold) ? r.units_sold : 0) + (dailyMode === "add" && Number.isFinite(r.points_to_add) ? r.points_to_add : 0), 0);
+  }, [rows, dailyMode]);
 
   const liveManagerPercent = useMemo(() => {
     if (dailyGeneralGoal <= 0) return 0;
@@ -238,18 +252,26 @@ export function AdminDashboard({
 
   // Guardar estadísticas diarias (Operación atómica de múltiples vendedores)
   const handleSaveDailyStats = async () => {
+    if (dailySaveRef.current || loadedDailyDate !== selectedDate || isLoadingDate) return;
+    dailySaveRef.current = true;
     setIsSavingDaily(true);
     try {
-      const payload = {
+      const payload = dailyRequestRef.current ?? {
+        request_id: crypto.randomUUID(),
+        mode: dailyMode,
         sale_date: selectedDate,
-        general_goal: Math.max(0, Math.floor(Number(dailyGeneralGoal) || 0)),
+        general_goal: dailyGeneralGoal,
         entries: rows.map((r) => ({
           seller_id: r.seller_id,
-          units_sold: Math.max(0, Math.floor(Number(r.units_sold) || 0)),
-          individual_goal: Math.max(0, Math.floor(Number(r.individual_goal) || 0)),
+          units_sold: dailyMode === "add" ? r.points_to_add : r.units_sold,
+          individual_goal: r.individual_goal,
           expected_version: r.expected_version,
         })),
       };
+      if (![payload.general_goal, ...payload.entries.flatMap((entry) => [entry.units_sold, entry.individual_goal])].every((value) => Number.isInteger(value) && value >= 0 && value <= 100000)) {
+        throw new Error("Introduce puntos y metas enteros entre 0 y 100000.");
+      }
+      dailyRequestRef.current = payload;
 
       const res = await fetch("/api/admin/sales", {
         method: "POST",
@@ -259,9 +281,12 @@ export function AdminDashboard({
 
       const data = await res.json();
       if (!res.ok) {
+        if (res.status < 500) { dailyRequestRef.current = null; setDailyRetryPending(false); }
         throw new Error(data.error ?? "Error al guardar las estadísticas");
       }
 
+      dailyRequestRef.current = null;
+      setDailyRetryPending(false);
       const nextSnapshot = data.snapshot as SalesBoardSnapshot;
       setSnapshot(nextSnapshot);
       syncRowsFromSnapshot(nextSnapshot);
@@ -270,14 +295,16 @@ export function AdminDashboard({
 
       showNotification(
         "success",
-        `Estadísticas del ${formatShortDateEs(selectedDate)} guardadas y publicadas en tiempo real.`
+        `${payload.mode === "add" ? "Puntos sumados" : "Totales corregidos"} para el ${formatShortDateEs(payload.sale_date)} y publicados en tiempo real.`
       );
     } catch (err) {
+      if (dailyRequestRef.current) setDailyRetryPending(true);
       showNotification(
         "error",
         err instanceof Error ? err.message : "Error al guardar estadísticas"
       );
     } finally {
+      dailySaveRef.current = false;
       setIsSavingDaily(false);
     }
   };
@@ -515,28 +542,36 @@ export function AdminDashboard({
         </div>
         <nav className="admin-nav" aria-label="Secciones administrativas">
           {([
-            ["daily", "Registro diario"], ["sellers", "Vendedores"], ["manager", "Manager General"], ["audit", "Historial"],
+            ["daily", "Registro diario"], ["reports", "Reportes / Excel"], ["sellers", "Vendedores"], ["manager", "Manager General"], ["audit", "Historial"],
           ] as const).map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? "page" : undefined}>{label}</button>)}
         </nav>
       </header>
       <main className="admin-main space-y-6">
+        {activeTab === "reports" && <PointsReports />}
         {/* ===================================================================
             PESTAÑA 1: REGISTRO DIARIO DE PUNTOS Y CONSULTA POR FECHAS
            =================================================================== */}
         {activeTab === "daily" && (
           <div className="space-y-6">
             <div className="admin-page-heading">
-              <div><h1>Registro diario</h1><p>Introduce el total acumulado de cada vendedor.</p></div>
+              <div><h1>Registro diario</h1><p>{dailyMode === "add" ? "Introduce los puntos nuevos; se sumarán a los ya registrados para esa fecha." : "Corrige el total del día. Este modo reemplaza la cantidad guardada."}</p></div>
               <div className="flex flex-wrap items-center gap-2">
-                <input type="date" aria-label="Seleccionar fecha a editar" value={selectedDate} max={todaySantoDomingo} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value); }} className="h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm" />
-                <Button size="sm" variant={selectedDate === todaySantoDomingo ? "default" : "outline"} onClick={() => setSelectedDate(todaySantoDomingo)}>Hoy</Button>
-                <Button size="sm" variant={selectedDate === addDaysToDateString(todaySantoDomingo, -1) ? "default" : "outline"} onClick={() => setSelectedDate(addDaysToDateString(todaySantoDomingo, -1))}>Ayer</Button>
+                <input type="date" disabled={isSavingDaily || dailyRetryPending} aria-label="Seleccionar fecha a editar" value={selectedDate} max={todaySantoDomingo} onInput={(event) => { if (event.currentTarget.value) setSelectedDate(event.currentTarget.value); }} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value); }} className="h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm" />
+                <Button size="sm" disabled={isSavingDaily || dailyRetryPending} variant={selectedDate === todaySantoDomingo ? "default" : "outline"} onClick={() => setSelectedDate(todaySantoDomingo)}>Hoy</Button>
+                <Button size="sm" disabled={isSavingDaily || dailyRetryPending} variant={selectedDate === addDaysToDateString(todaySantoDomingo, -1) ? "default" : "outline"} onClick={() => setSelectedDate(addDaysToDateString(todaySantoDomingo, -1))}>Ayer</Button>
+                <Button size="sm" variant="outline" disabled={isSavingDaily || isLoadingDate || dailyRetryPending} onClick={() => void loadDailyData(selectedDate)}>Recargar fecha</Button>
               </div>
             </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Operación de puntos">
+              <Button variant={dailyMode === "add" ? "default" : "outline"} disabled={isSavingDaily || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("add"); syncRowsFromSnapshot(snapshot); }}>Sumar puntos</Button>
+              <Button variant={dailyMode === "set" ? "default" : "outline"} disabled={isSavingDaily || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("set"); syncRowsFromSnapshot(snapshot); }}>Corregir total del día</Button>
+            </div>
+            {dailyRetryPending && <p role="alert" className="rounded-xl border border-separator bg-warning-soft p-4 text-sm text-warning-text">No se pudo confirmar el guardado. Pulsa Reintentar guardado: la misma operación no se sumará dos veces. Mantén esta página abierta hasta confirmarlo.</p>}
+            <fieldset disabled={isSavingDaily || isLoadingDate || loadedDailyDate !== selectedDate} className="space-y-6">
             <section className="admin-summary" aria-label="Resumen diario de la tienda">
               <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p></div>
               <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados</p></div>
-              <div><label htmlFor="daily-general-goal-input" className="admin-summary-label block">Meta general</label><Input id="daily-general-goal-input" type="number" min={0} step={1} value={dailyGeneralGoal} onChange={(event) => setDailyGeneralGoal(Math.max(0, parseInt(event.target.value || "0", 10)))} /></div>
+              <div><label htmlFor="daily-general-goal-input" className="admin-summary-label block">Meta general</label><Input id="daily-general-goal-input" disabled={dailyRetryPending} type="number" min={0} step={1} value={dailyGeneralGoal} onChange={(event) => setDailyGeneralGoal(Number(event.target.value || "0"))} /></div>
             </section>
 
             {/* Tabla Editable de Registro Diario (Sección 7.1) */}
@@ -544,10 +579,10 @@ export function AdminDashboard({
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-separator px-5 py-4">
                 <div>
                   <h3 className="font-display text-base sm:text-lg font-medium text-foreground">
-                    Ventas del día
+                    Puntos del día
                   </h3>
                   <p className="text-xs text-secondary">
-                    Escribe el total acumulado; al guardar se actualiza el tablero.
+                    {dailyMode === "add" ? "Escribe solo los puntos nuevos. Los campos volverán a cero al guardar; el total se conserva." : "Escribe el total correcto de esta fecha; no se suma al anterior."}
                   </p>
                 </div>
 
@@ -555,7 +590,7 @@ export function AdminDashboard({
                   type="button"
                   variant="emerald"
                   size="lg"
-                  disabled={isSavingDaily || isLoadingDate}
+                  disabled={isSavingDaily || isLoadingDate || loadedDailyDate !== selectedDate}
                   onClick={handleSaveDailyStats}
                 >
                   {isSavingDaily ? (
@@ -566,7 +601,7 @@ export function AdminDashboard({
                   ) : (
                     <>
                       <Save className="h-4 w-4" />
-                      <span>Guardar estadísticas</span>
+                      <span>{dailyRetryPending ? "Reintentar guardado" : dailyMode === "add" ? "Aplicar suma de puntos" : "Guardar corrección"}</span>
                     </>
                   )}
                 </Button>
@@ -578,7 +613,7 @@ export function AdminDashboard({
                     <tr className="border-b border-separator bg-muted text-[11px] font-medium text-secondary">
                       <th className="py-3.5 px-4 sm:px-6">Vendedor</th>
                       <th className="py-3.5 px-4 text-right w-48">
-                        Puntos acumulados hoy
+                        {dailyMode === "add" ? "Puntos a sumar" : "Total del día"}
                       </th>
                       <th className="py-3.5 px-4 text-right w-40">Meta</th>
                       <th className="py-3.5 px-4 text-center">Progreso</th>
@@ -590,12 +625,12 @@ export function AdminDashboard({
                       const pct =
                         row.individual_goal > 0
                           ? Math.round(
-                              (row.units_sold / row.individual_goal) * 100
+                              ((row.units_sold + (dailyMode === "add" ? row.points_to_add : 0)) / row.individual_goal) * 100
                             )
                           : 0;
                       const isMet =
                         row.individual_goal > 0 &&
-                        row.units_sold >= row.individual_goal;
+                        row.units_sold + (dailyMode === "add" ? row.points_to_add : 0) >= row.individual_goal;
 
                       return (
                         <tr
@@ -632,19 +667,17 @@ export function AdminDashboard({
                               type="number"
                               min={0}
                               step={1}
-                              aria-label={`Puntos acumulados por ${row.full_name}`}
-                              value={row.units_sold}
+                              aria-label={dailyMode === "add" ? `Puntos a sumar a ${row.full_name}` : `Total del día de ${row.full_name}`}
+                              disabled={dailyRetryPending}
+                              value={dailyMode === "add" ? row.points_to_add : row.units_sold}
                               onChange={(e) => {
-                                const val = Math.max(
-                                  0,
-                                  parseInt(e.target.value || "0", 10)
-                                );
+                                const val = Number(e.target.value || "0");
                                 setRows((prev) =>
                                   prev.map((item, i) =>
                                     i === index
                                       ? {
                                           ...item,
-                                          units_sold: Number.isNaN(val) ? 0 : val,
+                                          [dailyMode === "add" ? "points_to_add" : "units_sold"]: Number.isNaN(val) ? 0 : val,
                                         }
                                       : item
                                   )
@@ -652,6 +685,7 @@ export function AdminDashboard({
                               }}
                               className="ml-auto w-28 sm:w-32 text-right font-display text-lg font-semibold tabular-nums text-foreground border-separator bg-muted"
                             />
+                            {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Guardados: {row.units_sold} · Quedará: {row.units_sold + row.points_to_add}</p>}
                           </td>
 
                           {/* Input de Meta individual */}
@@ -661,6 +695,7 @@ export function AdminDashboard({
                               min={0}
                               step={1}
                               aria-label={`Meta individual de ${row.full_name}`}
+                              disabled={dailyRetryPending}
                               value={row.individual_goal}
                               onChange={(e) => {
                                 const val = Math.max(
@@ -728,6 +763,8 @@ export function AdminDashboard({
 
               </div>
             </div>
+
+            </fieldset>
 
             {/* Consulta de Estadísticas Acumuladas por Rango de Fechas (Sección 8) */}
             <div className="rounded-2xl border border-separator bg-surface p-5">

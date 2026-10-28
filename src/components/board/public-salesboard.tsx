@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/ui/appearance-provider";
 import { YacellTechLogo } from "@/components/ui/yacelltech-logo";
 
 export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBoardSnapshot }) {
-  const [preset, setPreset] = useState<DateFilterPreset>("today");
+  const [preset, setPreset] = useState<DateFilterPreset>(initialSnapshot.dateFilter.preset);
   const [customStart, setCustomStart] = useState(initialSnapshot.dateFilter.startDate);
   const [customEnd, setCustomEnd] = useState(initialSnapshot.dateFilter.endDate);
   const [isTvMode, setIsTvMode] = useState(false);

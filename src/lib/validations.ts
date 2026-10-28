@@ -2,7 +2,11 @@ import { z } from "zod";
 
 export const dateStringSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe tener el formato YYYY-MM-DD");
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe tener el formato YYYY-MM-DD")
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "La fecha no existe");
 
 export const hexColorSchema = z
   .string()
@@ -26,12 +30,22 @@ export const dailySaleItemInputSchema = z.object({
 });
 
 export const batchSaveDailySalesSchema = z.object({
+  request_id: z.string().uuid().optional(),
+  mode: z.enum(["add", "set"]).default("set"),
   sale_date: dateStringSchema,
   general_goal: nonNegativeIntSchema,
   entries: z
     .array(dailySaleItemInputSchema)
-    .min(1, "Debe incluir al menos un vendedor para guardar"),
-});
+    .min(1, "Debe incluir al menos un vendedor para guardar")
+    .max(500)
+    .refine((entries) => new Set(entries.map((entry) => entry.seller_id)).size === entries.length, "Hay vendedores duplicados"),
+}).refine((input) => input.mode !== "add" || Boolean(input.request_id), "La suma necesita un identificador de operación");
+
+export const pointsReportRangeSchema = z.object({
+  startDate: dateStringSchema,
+  endDate: dateStringSchema,
+}).refine((range) => range.startDate <= range.endDate, "La fecha inicial no puede ser posterior a la final")
+  .refine((range) => (Date.parse(range.endDate) - Date.parse(range.startDate)) / 86400000 < 366, "Selecciona un rango de hasta 366 días");
 
 export const createSellerSchema = z.object({
   full_name: z

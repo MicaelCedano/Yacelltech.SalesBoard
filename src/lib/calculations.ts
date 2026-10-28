@@ -84,13 +84,11 @@ export function applyDirectCumulativeDailySalesUpdate(params: {
 
     // Prevención de sobrescritura concurrente si se envía expected_version
     if (
-      existing &&
       typeof item.expected_version === "number" &&
-      item.expected_version > 0 &&
-      existing.version !== item.expected_version
+      (existing?.version ?? 0) !== item.expected_version
     ) {
       throw new Error(
-        `CONFLICT: Las estadísticas de ${seller.full_name} fueron modificadas por otro administrador (versión actual ${existing.version}, esperada ${item.expected_version}). Recarga antes de guardar.`
+        `CONFLICT: Las estadísticas de ${seller.full_name} fueron modificadas por otro administrador (versión actual ${existing?.version ?? 0}, esperada ${item.expected_version}). Recarga antes de guardar.`
       );
     }
 
