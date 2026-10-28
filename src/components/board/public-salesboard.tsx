@@ -21,18 +21,30 @@ export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBo
   const boardTitle = snapshot.settings.board_title || "Ranking de puntos";
 
   useEffect(() => {
+    // TV mode also works when the built-in browser has no Fullscreen API.
+    // Keep the server and initial client render identical, then read the device.
+    const requestedMode = new URLSearchParams(window.location.search).get("tv");
+    let savedTvMode: string | null = null;
+    try { savedTvMode = window.localStorage.getItem("salesboard-tv"); } catch {}
+    const smartTv = /SmartTV|Smart-TV|Tizen|Web0S|WebOS|HbbTV|Viera|BRAVIA|AFT\w+|Android.*TV/i.test(navigator.userAgent);
+    setIsTvMode(requestedMode === "1" || (requestedMode !== "0" && (savedTvMode === null ? smartTv : savedTvMode === "true")));
     const timer = window.setInterval(() => setToday(getSantoDomingoToday()), 30000);
-    const fullscreenChange = () => setIsTvMode(Boolean(document.fullscreenElement));
+    const fullscreenChange = () => {
+      if (document.fullscreenElement) setIsTvMode(true);
+    };
     document.addEventListener("fullscreenchange", fullscreenChange);
     return () => { window.clearInterval(timer); document.removeEventListener("fullscreenchange", fullscreenChange); };
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
+    const nextMode = !isTvMode;
+    setIsTvMode(nextMode);
+    try { window.localStorage.setItem("salesboard-tv", String(nextMode)); } catch {}
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
-    } catch { setIsTvMode((previous) => !previous); }
-  }, []);
+      if (!nextMode && document.fullscreenElement) await document.exitFullscreen();
+      else if (nextMode && !document.fullscreenElement) await document.documentElement.requestFullscreen?.();
+    } catch { /* The TV layout remains active if fullscreen is unavailable. */ }
+  }, [isTvMode]);
 
   return (
     <main className="public-board" data-tv={isTvMode}>
@@ -43,13 +55,13 @@ export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBo
           <div className="board-controls">
             {!isTvMode && <select className="period-select" aria-label="Período del tablero" value={preset} onChange={(event) => setPreset(event.target.value as DateFilterPreset)}><option value="today">Hoy</option><option value="yesterday">Ayer</option><option value="last7days">Últimos 7 días</option><option value="thisMonth">Este mes</option><option value="custom">Rango personalizado</option></select>}
             <ThemeToggle />
-            <button type="button" className="icon-button" aria-label={isTvMode ? "Salir de pantalla completa" : "Activar modo TV"} onClick={toggleFullscreen} title={isTvMode ? "Salir de pantalla completa" : "Activar modo TV"}>{isTvMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
+            <button type="button" className="icon-button" aria-label={isTvMode ? "Desactivar modo TV" : "Activar modo TV"} aria-pressed={isTvMode} onClick={toggleFullscreen} title={isTvMode ? "Desactivar modo TV" : "Activar modo TV"}>{isTvMode ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
           </div>
         </div>
       </header>
       {preset === "custom" && !isTvMode && <div className="custom-range"><label>Desde <input type="date" aria-label="Fecha inicial" value={customStart} max={customEnd} onChange={(event) => { if (event.target.value) setCustomStart(event.target.value); }} /></label><label>Hasta <input type="date" aria-label="Fecha final" value={customEnd} min={customStart} onChange={(event) => { if (event.target.value) setCustomEnd(event.target.value); }} /></label></div>}
-      <ManagerCard manager={snapshot.manager} />
-      <VerticalSellersChart sellers={snapshot.rankedSellers} title={preset === "today" ? boardTitle : `${boardTitle} · ${snapshot.dateFilter.label}`} />
+      <ManagerCard manager={snapshot.manager} staticDisplay={isTvMode} />
+      <VerticalSellersChart sellers={snapshot.rankedSellers} staticDisplay={isTvMode} title={preset === "today" ? boardTitle : `${boardTitle} · ${snapshot.dateFilter.label}`} />
     </main>
   );
 }

@@ -8,8 +8,9 @@ import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { arrangeCenteredRanking } from "@/lib/ranking-layout";
 
-export function VerticalSellersChart({ sellers, title = "Ranking de puntos" }: { sellers: RankedSellerStat[]; title?: string }) {
-  const reducedMotion = useReducedMotion();
+export function VerticalSellersChart({ sellers, title = "Ranking de puntos", staticDisplay = false }: { sellers: RankedSellerStat[]; title?: string; staticDisplay?: boolean }) {
+  const prefersReducedMotion = useReducedMotion();
+  const reducedMotion = staticDisplay || prefersReducedMotion;
   const scrollRef = useRef<HTMLDivElement>(null);
   const { orderedSellers, needsTrailingSpace } = arrangeCenteredRanking(sellers);
   const sellerOrder = orderedSellers.map((item) => item.seller.id).join(",");
@@ -39,7 +40,7 @@ export function VerticalSellersChart({ sellers, title = "Ranking de puntos" }: {
           <div className="seller-columns" data-count={sellers.length}>
             <AnimatePresence initial={false}>
               {orderedSellers.map((item) => (
-                <motion.article key={item.seller.id} layout={!reducedMotion} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reducedMotion ? 0 : 0.4 }} className="seller-column" data-seller-id={item.seller.id} data-rank={item.rank} aria-label={`${item.seller.full_name}: ${item.unitsSold} ${item.unitsSold === 1 ? "punto" : "puntos"}${item.rank ? `, posición ${item.rank}` : ""}`}>
+                <motion.article key={item.seller.id} layout={!reducedMotion} initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reducedMotion ? 0 : 0.4 }} className="seller-column" data-seller-id={item.seller.id} data-rank={item.rank} aria-label={`${item.seller.full_name}: ${item.unitsSold} ${item.unitsSold === 1 ? "punto" : "puntos"}${item.rank ? `, posición ${item.rank}` : ""}`}>
                   <div className="seller-identity">
                     <div className="seller-avatar-wrap">
                       <AvatarBadge className="seller-avatar" src={item.seller.avatar_url} name={item.seller.full_name} size="tv" />
@@ -52,14 +53,14 @@ export function VerticalSellersChart({ sellers, title = "Ranking de puntos" }: {
                     <div className="seller-bar-track">
                       <motion.div className="seller-bar" initial={reducedMotion ? false : { height: 0 }} animate={{ height: `${item.barHeightPercent}%` }} transition={{ duration: reducedMotion ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }} data-bar-percent={item.barHeightPercent} />
                       <motion.div className="seller-bar-label" initial={false} animate={{ bottom: `${item.barHeightPercent}%` }} transition={{ duration: reducedMotion ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }}>
-                        <AnimatedNumber className="seller-units" value={item.unitsSold} />
+                        <AnimatedNumber className="seller-units" value={item.unitsSold} staticDisplay={staticDisplay} />
                         <span className="seller-unit-label">{item.unitsSold === 1 ? "Punto" : "Puntos"}</span>
                       </motion.div>
                     </div>
                   </div>
                   <div className="seller-stats">
                     {item.effectiveGoal > 0 ? <>
-                      <div className="seller-goal" data-complete={item.isGoalCompleted}>{item.isGoalCompleted && <Check size={16} aria-hidden="true" />}<AnimatedNumber value={item.goalCompletionPercent} /><span>%</span><small>de meta</small></div>
+                      <div className="seller-goal" data-complete={item.isGoalCompleted}>{item.isGoalCompleted && <Check size={16} aria-hidden="true" />}<AnimatedNumber value={item.goalCompletionPercent} staticDisplay={staticDisplay} /><span>%</span><small>de meta</small></div>
                       <p className="seller-meta-label">Meta {item.effectiveGoal.toLocaleString("es-DO")} puntos</p>
                       <div className="seller-goal-track" role="progressbar" aria-label={`Meta de ${item.seller.full_name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, item.goalCompletionPercent)} aria-valuetext={`${item.unitsSold} de ${item.effectiveGoal} puntos · ${item.goalCompletionPercent}%`}>
                         <motion.div initial={false} animate={{ width: `${Math.min(100, item.goalCompletionPercent)}%` }} transition={{ duration: reducedMotion ? 0 : 0.4 }} data-complete={item.isGoalCompleted} />
