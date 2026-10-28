@@ -103,7 +103,14 @@ export const loginCredentialsSchema = z.object({
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
+export const closeMonthSalesSchema = z.object({
+  request_id: z.string().uuid().optional(),
+  mode: z.literal("close_month"),
+  sale_date: dateStringSchema.optional(),
+});
+
 export type BatchSaveDailySalesInput = z.infer<typeof batchSaveDailySalesSchema>;
+export type CloseMonthSalesInput = z.infer<typeof closeMonthSalesSchema>;
 export type CreateSellerInput = z.infer<typeof createSellerSchema>;
 export type UpdateSellerInput = z.infer<typeof updateSellerSchema>;
 export type UpdateManagerSettingsInput = z.infer<typeof updateManagerSettingsSchema>;

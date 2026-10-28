@@ -13,6 +13,11 @@ import {
   buildSalesBoardSnapshot,
 } from "@/lib/calculations";
 import {
+  CYCLE_START_MARKER_GOAL_DATE,
+  decodeGoalIntAsDate,
+  encodeDateAsGoalInt,
+  formatShortDateEs,
+  getFirstDayOfMonth,
   getSantoDomingoToday,
   resolveDateRangeFilter,
 } from "@/lib/date-utils";
@@ -24,6 +29,7 @@ import {
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   BatchSaveDailySalesInput,
+  CloseMonthSalesInput,
   CreateSellerInput,
   UpdateManagerSettingsInput,
   UpdateSellerInput,
@@ -45,7 +51,7 @@ export async function fetchSalesBoardSnapshot(params?: {
 }): Promise<SalesBoardSnapshot> {
   const today = getSantoDomingoToday();
   const preset = params?.preset ?? "today";
-  const dateFilter = resolveDateRangeFilter(
+  let dateFilter = resolveDateRangeFilter(
     preset,
     today,
     params?.customStart,
@@ -55,6 +61,27 @@ export async function fetchSalesBoardSnapshot(params?: {
   const supabase = await getSupabaseServerClient();
 
   if (supabase) {
+    let queryStartDate = dateFilter.startDate;
+    if (preset === "thisMonth") {
+      const markerRes = await supabase
+        .from("daily_goals")
+        .select("general_goal")
+        .eq("goal_date", CYCLE_START_MARKER_GOAL_DATE)
+        .maybeSingle();
+      const cycleStart = decodeGoalIntAsDate(markerRes.data?.general_goal);
+      if (cycleStart && cycleStart <= today) {
+        queryStartDate = cycleStart;
+        dateFilter = {
+          ...dateFilter,
+          startDate: cycleStart,
+          label:
+            cycleStart !== getFirstDayOfMonth(today)
+              ? `Este mes (desde ${formatShortDateEs(cycleStart)})`
+              : dateFilter.label,
+        };
+      }
+    }
+
     const [settingsRes, sellersRes, salesRes, goalsRes] = await Promise.all([
       supabase.from("app_settings").select("*").eq("id", 1).single(),
       supabase
@@ -65,12 +92,12 @@ export async function fetchSalesBoardSnapshot(params?: {
       supabase
         .from("daily_sales")
         .select("*")
-        .gte("sale_date", dateFilter.startDate)
+        .gte("sale_date", queryStartDate)
         .lte("sale_date", dateFilter.endDate),
       supabase
         .from("daily_goals")
         .select("*")
-        .gte("goal_date", dateFilter.startDate)
+        .gte("goal_date", queryStartDate)
         .lte("goal_date", dateFilter.endDate),
     ]);
 
@@ -94,7 +121,9 @@ export async function fetchSalesBoardSnapshot(params?: {
 
     const sellers = (sellersRes.data as Seller[] | null) ?? [];
     const dailySales = (salesRes.data as DailySaleRecord[] | null) ?? [];
-    const dailyGoals = (goalsRes.data as DailyGoalRecord[] | null) ?? [];
+    const dailyGoals = ((goalsRes.data as DailyGoalRecord[] | null) ?? []).filter(
+      (g) => g.goal_date !== CYCLE_START_MARKER_GOAL_DATE
+    );
 
     return buildSalesBoardSnapshot({
       settings,
@@ -108,11 +137,25 @@ export async function fetchSalesBoardSnapshot(params?: {
 
   // Modo de demostración local (aislado de producción)
   const demoDb = readDemoDatabase();
+  if (preset === "thisMonth") {
+    const marker = demoDb.dailyGoals.find((g) => g.goal_date === CYCLE_START_MARKER_GOAL_DATE);
+    const cycleStart = decodeGoalIntAsDate(marker?.general_goal);
+    if (cycleStart && cycleStart <= today) {
+      dateFilter = {
+        ...dateFilter,
+        startDate: cycleStart,
+        label:
+          cycleStart !== getFirstDayOfMonth(today)
+            ? `Este mes (desde ${formatShortDateEs(cycleStart)})`
+            : dateFilter.label,
+      };
+    }
+  }
   return buildSalesBoardSnapshot({
     settings: demoDb.settings,
     sellers: demoDb.sellers,
     dailySales: demoDb.dailySales,
-    dailyGoals: demoDb.dailyGoals,
+    dailyGoals: demoDb.dailyGoals.filter((g) => g.goal_date !== CYCLE_START_MARKER_GOAL_DATE),
     dateFilter,
     dataSource: "demo-local",
   });
@@ -135,7 +178,81 @@ export async function saveBatchDailySales(
       p_request_id: requestId, p_sale_date: input.sale_date,
       p_general_goal: input.general_goal, p_entries: input.entries, p_mode: input.mode,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes("apply_daily_points") || error.code === "PGRST202") {
+        // Fallback directo si la función RPC aún no ha sido ejecutada manualmente en SQL Editor
+        const [sellersRes, salesRes, goalRes] = await Promise.all([
+          supabase.from("sellers").select("*"),
+          supabase.from("daily_sales").select("*").eq("sale_date", input.sale_date),
+          supabase.from("daily_goals").select("*").eq("goal_date", input.sale_date).maybeSingle(),
+        ]);
+        if (sellersRes.error) throw new Error(sellersRes.error.message);
+        if (salesRes.error) throw new Error(salesRes.error.message);
+        const existingSales = (salesRes.data as DailySaleRecord[] | null) ?? [];
+        const sellers = (sellersRes.data as Seller[] | null) ?? [];
+        const { updatedSales, auditDiffs } = applyDirectCumulativeDailySalesUpdate({
+          saleDate: input.sale_date,
+          existingSales,
+          sellers,
+          updates: input.mode === "add" ? input.entries.map((entry) => {
+            const prev = existingSales.find((s) => s.seller_id === entry.seller_id && s.sale_date === input.sale_date);
+            const total = (prev?.units_sold ?? 0) + entry.units_sold;
+            if (total > 100000) throw new Error("El total diario no puede exceder 100000 puntos");
+            return { ...entry, units_sold: total, expected_version: undefined };
+          }) : input.entries,
+          actorId: actor.userId,
+          nowIso,
+        });
+        for (const record of updatedSales) {
+          if (record.sale_date !== input.sale_date) continue;
+          const { error: upsertErr } = await supabase.from("daily_sales").upsert({
+            seller_id: record.seller_id,
+            sale_date: record.sale_date,
+            units_sold: record.units_sold,
+            individual_goal_snapshot: record.individual_goal_snapshot,
+            version: record.version,
+            updated_by: actor.userId,
+            updated_at: nowIso,
+          }, { onConflict: "seller_id,sale_date" });
+          if (upsertErr) throw new Error(upsertErr.message);
+        }
+        await supabase.from("daily_goals").upsert({
+          goal_date: input.sale_date,
+          general_goal: input.general_goal,
+          updated_by: actor.userId,
+          updated_at: nowIso,
+        }, { onConflict: "goal_date" });
+        await supabase.from("audit_logs").insert({
+          id: requestId,
+          actor_id: actor.userId,
+          actor_email: actor.email,
+          action_type: "BATCH_DAILY_SALES_UPDATE",
+          entity_type: "daily_sales",
+          entity_id: input.sale_date,
+          sale_date: input.sale_date,
+          previous_values: {
+            general_goal: goalRes.data?.general_goal ?? 50,
+            sellers: auditDiffs.map((d) => ({
+              seller_id: d.seller_id, seller_name: d.seller_name,
+              units_sold: d.previous_units, individual_goal: d.previous_goal,
+            })),
+          },
+          new_values: {
+            general_goal: input.general_goal,
+            request: operation,
+            sellers: auditDiffs.map((d) => ({
+              seller_id: d.seller_id, seller_name: d.seller_name,
+              units_sold: d.new_units, individual_goal: d.new_goal,
+            })),
+          },
+        });
+        const snapshot = await fetchSalesBoardSnapshot({
+          preset: "custom", customStart: input.sale_date, customEnd: input.sale_date,
+        });
+        return { snapshot, updatedCount: auditDiffs.length };
+      }
+      throw new Error(error.message);
+    }
     const snapshot = await fetchSalesBoardSnapshot({
       preset: "custom", customStart: input.sale_date, customEnd: input.sale_date,
     });
@@ -230,6 +347,190 @@ export async function saveBatchDailySales(
   });
 
   return { snapshot, updatedCount: auditDiffs.length };
+}
+
+/**
+ * Cierra el mes/ciclo actual y reinicia la pantalla pública y el contador activo a 0,
+ * preservando intacto el historial diario de cada vendedor en reportes y Excel.
+ */
+export async function closeCurrentMonthAndResetBoard(
+  input: CloseMonthSalesInput,
+  actor: AdminActor
+): Promise<{
+  snapshot: SalesBoardSnapshot;
+  monthSnapshot: SalesBoardSnapshot;
+  closedTotal: number;
+}> {
+  const closeDate = input.sale_date ?? getSantoDomingoToday();
+  const nowIso = new Date().toISOString();
+  const requestId = input.request_id ?? crypto.randomUUID();
+  const markerGoalInt = encodeDateAsGoalInt(closeDate);
+
+  const [beforeMonthSnap, beforeDaySnap] = await Promise.all([
+    fetchSalesBoardSnapshot({ preset: "thisMonth" }),
+    fetchSalesBoardSnapshot({ preset: "custom", customStart: closeDate, customEnd: closeDate }),
+  ]);
+
+  const dayPointsBySeller = new Map<string, number>();
+  for (const item of beforeDaySnap.allSellersAdminTable) {
+    dayPointsBySeller.set(item.seller.id, item.unitsSold);
+  }
+
+  const previousValues = {
+    period_start: beforeMonthSnap.dateFilter.startDate,
+    period_end: closeDate,
+    general_goal: beforeMonthSnap.manager.generalGoal,
+    total_points: beforeMonthSnap.manager.totalUnitsSold,
+    sellers: beforeMonthSnap.allSellersAdminTable.map((item) => ({
+      seller_id: item.seller.id,
+      seller_name: item.seller.full_name,
+      units_sold: item.unitsSold,
+      month_points: item.unitsSold,
+      day_points_closed: dayPointsBySeller.get(item.seller.id) ?? 0,
+      individual_goal: item.seller.individual_goal,
+    })),
+  };
+
+  const newValues = {
+    cycle_start_date: closeDate,
+    closed_at: nowIso,
+    general_goal: beforeDaySnap.manager.generalGoal,
+    total_points: 0,
+    request: { mode: "close_month", sale_date: closeDate },
+    sellers: beforeMonthSnap.allSellersAdminTable.map((item) => ({
+      seller_id: item.seller.id,
+      seller_name: item.seller.full_name,
+      units_sold: 0,
+      month_points: 0,
+      individual_goal: item.seller.individual_goal,
+    })),
+  };
+
+  const supabase = await getSupabaseServerClient();
+  if (supabase) {
+    const existingAudit = await supabase.from("audit_logs").select("id").eq("id", requestId).maybeSingle();
+    if (!existingAudit.data) {
+      // Reiniciar a 0 únicamente la fecha de cierre para que el nuevo ciclo empiece en 0 sin borrar días anteriores
+      const { data: todaySales, error: salesErr } = await supabase
+        .from("daily_sales")
+        .select("*")
+        .eq("sale_date", closeDate);
+      if (salesErr) throw new Error(salesErr.message);
+
+      for (const sale of (todaySales as DailySaleRecord[] | null) ?? []) {
+        if (sale.units_sold > 0) {
+          const { error: updErr } = await supabase
+            .from("daily_sales")
+            .update({
+              units_sold: 0,
+              version: sale.version + 1,
+              updated_by: actor.userId,
+              updated_at: nowIso,
+            })
+            .eq("id", sale.id);
+          if (updErr) throw new Error(updErr.message);
+        }
+      }
+
+      const { error: markerErr } = await supabase.from("daily_goals").upsert(
+        {
+          goal_date: CYCLE_START_MARKER_GOAL_DATE,
+          general_goal: markerGoalInt,
+          updated_by: actor.userId,
+          updated_at: nowIso,
+        },
+        { onConflict: "goal_date" }
+      );
+      if (markerErr) throw new Error(markerErr.message);
+
+      const { error: auditErr } = await supabase.from("audit_logs").insert({
+        id: requestId,
+        actor_id: actor.userId,
+        actor_email: actor.email,
+        action_type: "MONTH_CLOSED",
+        entity_type: "daily_sales",
+        entity_id: closeDate,
+        sale_date: closeDate,
+        previous_values: previousValues,
+        new_values: newValues,
+      });
+      if (auditErr) throw new Error(auditErr.message);
+    }
+
+    const [snapshot, monthSnapshot] = await Promise.all([
+      fetchSalesBoardSnapshot({ preset: "custom", customStart: closeDate, customEnd: closeDate }),
+      fetchSalesBoardSnapshot({ preset: "thisMonth" }),
+    ]);
+
+    return {
+      snapshot,
+      monthSnapshot,
+      closedTotal: beforeMonthSnap.manager.totalUnitsSold,
+    };
+  }
+
+  // Modo demostración local
+  const demoDb = readDemoDatabase();
+  const alreadyProcessed = demoDb.auditLogs.some((log) => log.id === requestId);
+  if (!alreadyProcessed) {
+    demoDb.dailySales = demoDb.dailySales.map((sale) =>
+      sale.sale_date === closeDate && sale.units_sold > 0
+        ? {
+            ...sale,
+            units_sold: 0,
+            version: sale.version + 1,
+            updated_by: actor.userId,
+            updated_at: nowIso,
+          }
+        : sale
+    );
+
+    const markerIdx = demoDb.dailyGoals.findIndex((g) => g.goal_date === CYCLE_START_MARKER_GOAL_DATE);
+    if (markerIdx >= 0) {
+      demoDb.dailyGoals[markerIdx] = {
+        ...demoDb.dailyGoals[markerIdx]!,
+        general_goal: markerGoalInt,
+        updated_by: actor.userId,
+        updated_at: nowIso,
+      };
+    } else {
+      demoDb.dailyGoals.push({
+        id: `goal-${CYCLE_START_MARKER_GOAL_DATE}`,
+        goal_date: CYCLE_START_MARKER_GOAL_DATE,
+        general_goal: markerGoalInt,
+        updated_by: actor.userId,
+        created_at: nowIso,
+        updated_at: nowIso,
+      });
+    }
+
+    demoDb.settings.updated_at = nowIso;
+    demoDb.auditLogs.unshift({
+      id: requestId,
+      actor_id: actor.userId,
+      actor_email: actor.email,
+      action_type: "MONTH_CLOSED",
+      entity_type: "daily_sales",
+      entity_id: closeDate,
+      sale_date: closeDate,
+      previous_values: previousValues,
+      new_values: newValues,
+      created_at: nowIso,
+    });
+
+    writeDemoDatabase(demoDb);
+  }
+
+  const [snapshot, monthSnapshot] = await Promise.all([
+    fetchSalesBoardSnapshot({ preset: "custom", customStart: closeDate, customEnd: closeDate }),
+    fetchSalesBoardSnapshot({ preset: "thisMonth" }),
+  ]);
+
+  return {
+    snapshot,
+    monthSnapshot,
+    closedTotal: beforeMonthSnap.manager.totalUnitsSold,
+  };
 }
 
 /**

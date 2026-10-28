@@ -28,7 +28,7 @@ export async function fetchPointsReport(startDate: string, endDate: string) {
     supabase.from("app_settings").select("store_name").eq("id", 1).single(),
     readAll<Seller>((from, to) => supabase.from("sellers").select("*").order("id").range(from, to)),
     readAll<DailySaleRecord>((from, to) => supabase.from("daily_sales").select("*").gte("sale_date", startDate).lte("sale_date", endDate).order("sale_date").order("seller_id").range(from, to)),
-    readAll<AuditLogEntry>((from, to) => supabase.from("audit_logs").select("*").eq("action_type", "BATCH_DAILY_SALES_UPDATE").gte("sale_date", startDate).lte("sale_date", endDate).order("created_at").order("id").range(from, to)),
+    readAll<AuditLogEntry>((from, to) => supabase.from("audit_logs").select("*").in("action_type", ["BATCH_DAILY_SALES_UPDATE", "MONTH_CLOSED"]).gte("sale_date", startDate).lte("sale_date", endDate).order("created_at").order("id").range(from, to)),
   ]);
   if (settings.error) throw new Error(settings.error.message);
   return buildPointsReport({ startDate, endDate, storeName: settings.data.store_name, sellers, sales, logs });

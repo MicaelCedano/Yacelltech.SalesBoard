@@ -66,6 +66,7 @@ export interface AuditLogEntry {
   actor_email: string;
   action_type:
     | "BATCH_DAILY_SALES_UPDATE"
+    | "MONTH_CLOSED"
     | "SELLER_CREATED"
     | "SELLER_UPDATED"
     | "SELLER_STATUS_CHANGED"

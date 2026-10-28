@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, BarChart3, CheckCircle2, Database, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, Save, Sparkles, UserCheck, UserPlus } from "lucide-react";
+import { AlertCircle, BarChart3, CheckCircle2, Database, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, Sparkles, UserCheck, UserPlus } from "lucide-react";
 import {
   AuditLogEntry,
   DateFilterPreset,
@@ -67,6 +67,9 @@ export function AdminDashboard({
   );
   const [isLoadingDate, setIsLoadingDate] = useState(false);
   const [isSavingDaily, setIsSavingDaily] = useState(false);
+  const [isClosingMonth, setIsClosingMonth] = useState(false);
+  const [showCloseMonthConfirm, setShowCloseMonthConfirm] = useState(false);
+  const [monthSnapshot, setMonthSnapshot] = useState<SalesBoardSnapshot>(initialSnapshot);
   const [dailyMode, setDailyMode] = useState<"add" | "set">("add");
   const [loadedDailyDate, setLoadedDailyDate] = useState<string | null>(null);
   const [dailyRetryPending, setDailyRetryPending] = useState(false);
@@ -165,6 +168,17 @@ export function AdminDashboard({
     setDailyGeneralGoal(snap.manager.generalGoal);
   }, []);
 
+  const loadMonthSnapshot = useCallback(async () => {
+    try {
+      const res = await fetch("/api/board?preset=thisMonth", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as SalesBoardSnapshot;
+      setMonthSnapshot(data);
+    } catch {
+      // Ignorar errores transitorios
+    }
+  }, []);
+
   // Cargar datos para la fecha seleccionada en Registro Diario
   const loadDailyData = useCallback(
     async (dateStr: string) => {
@@ -182,6 +196,7 @@ export function AdminDashboard({
         setSnapshot(data);
         syncRowsFromSnapshot(data);
         setLoadedDailyDate(dateStr);
+        void loadMonthSnapshot();
       } catch (err) {
         if (loadId !== dailyLoadRef.current) return;
         showNotification(
@@ -192,7 +207,7 @@ export function AdminDashboard({
         if (loadId === dailyLoadRef.current) setIsLoadingDate(false);
       }
     },
-    [showNotification, syncRowsFromSnapshot]
+    [showNotification, syncRowsFromSnapshot, loadMonthSnapshot]
   );
 
   useEffect(() => {
@@ -250,6 +265,14 @@ export function AdminDashboard({
     return Math.round((liveManagerTotal / dailyGeneralGoal) * 100);
   }, [liveManagerTotal, dailyGeneralGoal]);
 
+  const monthUnitsBySeller = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of monthSnapshot.allSellersAdminTable) {
+      map.set(item.seller.id, item.unitsSold);
+    }
+    return map;
+  }, [monthSnapshot]);
+
   // Guardar estadísticas diarias (Operación atómica de múltiples vendedores)
   const handleSaveDailyStats = async () => {
     if (dailySaveRef.current || loadedDailyDate !== selectedDate || isLoadingDate) return;
@@ -290,6 +313,7 @@ export function AdminDashboard({
       const nextSnapshot = data.snapshot as SalesBoardSnapshot;
       setSnapshot(nextSnapshot);
       syncRowsFromSnapshot(nextSnapshot);
+      void loadMonthSnapshot();
       void loadHistoryRange();
       broadcastBoardUpdate();
 
@@ -306,6 +330,55 @@ export function AdminDashboard({
     } finally {
       dailySaveRef.current = false;
       setIsSavingDaily(false);
+    }
+  };
+
+  // Cerrar mes y reiniciar la pantalla pública y el contador actual a 0 (conservando el historial diario)
+  const handleCloseMonthAndResetBoard = async () => {
+    if (isClosingMonth || isSavingDaily) return;
+    setIsClosingMonth(true);
+    try {
+      const res = await fetch("/api/admin/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          mode: "close_month",
+          sale_date: todaySantoDomingo,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "No se pudo cerrar el mes y reiniciar la pantalla");
+      }
+
+      setShowCloseMonthConfirm(false);
+      setDailyMode("add");
+      setSelectedDate(todaySantoDomingo);
+      const nextSnapshot = data.snapshot as SalesBoardSnapshot;
+      setSnapshot(nextSnapshot);
+      syncRowsFromSnapshot(nextSnapshot);
+      setLoadedDailyDate(todaySantoDomingo);
+      if (data.monthSnapshot) {
+        setMonthSnapshot(data.monthSnapshot as SalesBoardSnapshot);
+      } else {
+        void loadMonthSnapshot();
+      }
+      void loadHistoryRange();
+      void loadAuditHistory();
+      broadcastBoardUpdate();
+
+      showNotification(
+        "success",
+        `Mes cerrado (${Number(data.closedTotal ?? 0).toLocaleString("es-DO")} puntos guardados en el historial). La pantalla se reinició a 0 para empezar a sumar el nuevo mes.`
+      );
+    } catch (err) {
+      showNotification(
+        "error",
+        err instanceof Error ? err.message : "Error al cerrar el mes"
+      );
+    } finally {
+      setIsClosingMonth(false);
     }
   };
 
@@ -562,15 +635,87 @@ export function AdminDashboard({
                 <Button size="sm" variant="outline" disabled={isSavingDaily || isLoadingDate || dailyRetryPending} onClick={() => void loadDailyData(selectedDate)}>Recargar fecha</Button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Operación de puntos">
-              <Button variant={dailyMode === "add" ? "default" : "outline"} disabled={isSavingDaily || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("add"); syncRowsFromSnapshot(snapshot); }}>Sumar puntos</Button>
-              <Button variant={dailyMode === "set" ? "default" : "outline"} disabled={isSavingDaily || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("set"); syncRowsFromSnapshot(snapshot); }}>Corregir total del día</Button>
+            <div className="flex flex-wrap items-center justify-between gap-2" role="group" aria-label="Operación de puntos">
+              <div className="flex flex-wrap gap-2">
+                <Button variant={dailyMode === "add" ? "default" : "outline"} disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("add"); syncRowsFromSnapshot(snapshot); }}>Sumar puntos</Button>
+                <Button variant={dailyMode === "set" ? "default" : "outline"} disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("set"); syncRowsFromSnapshot(snapshot); }}>Corregir total del día</Button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate}
+                onClick={() => setShowCloseMonthConfirm((prev) => !prev)}
+                className="border-warning-text/40 text-foreground hover:bg-warning-soft"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>Cerrar mes / Reiniciar pantalla</span>
+              </Button>
             </div>
+            {showCloseMonthConfirm && (
+              <div role="region" aria-label="Confirmar cierre de mes" className="rounded-2xl border border-separator bg-surface p-5 space-y-4 shadow-subtle">
+                <div>
+                  <h3 className="font-display text-base font-semibold text-foreground">
+                    ¿Cerrar el mes y reiniciar la pantalla a 0?
+                  </h3>
+                  <p className="text-xs text-secondary mt-1">
+                    Usa esta opción cuando se le pagan los puntos del mes a los vendedores. La pantalla pública (TV) y el contador actual volverán a <strong>0 puntos</strong> para empezar a sumar el nuevo mes, pero <strong>todo el historial de cuánto se dio cada día a cada persona se conserva completo</strong> en Historial y en Exportar Excel.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-separator bg-muted p-3.5 text-xs space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-secondary">
+                      Puntos acumulados del mes actual ({monthSnapshot.dateFilter.label}):
+                    </span>
+                    <strong className="text-sm text-foreground tabular-nums">
+                      {monthSnapshot.manager.totalUnitsSold.toLocaleString("es-DO")} puntos
+                    </strong>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {monthSnapshot.allSellersAdminTable.map((item) => (
+                      <span
+                        key={item.seller.id}
+                        className="rounded-lg border border-separator bg-surface px-2.5 py-1 tabular-nums"
+                      >
+                        {item.seller.full_name}: <strong>{item.unitsSold.toLocaleString("es-DO")} pts</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isClosingMonth}
+                    onClick={() => setShowCloseMonthConfirm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="default"
+                    disabled={isClosingMonth}
+                    onClick={() => void handleCloseMonthAndResetBoard()}
+                  >
+                    {isClosingMonth ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>Cerrando mes...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-4 w-4" />
+                        <span>Confirmar cierre de mes y reiniciar a 0</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
             {dailyRetryPending && <p role="alert" className="rounded-xl border border-separator bg-warning-soft p-4 text-sm text-warning-text">No se pudo confirmar el guardado. Pulsa Reintentar guardado: la misma operación no se sumará dos veces. Mantén esta página abierta hasta confirmarlo.</p>}
-            <fieldset disabled={isSavingDaily || isLoadingDate || loadedDailyDate !== selectedDate} className="space-y-6">
+            <fieldset disabled={isSavingDaily || isClosingMonth || isLoadingDate || loadedDailyDate !== selectedDate} className="space-y-6">
             <section className="admin-summary" aria-label="Resumen diario de la tienda">
-              <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p></div>
-              <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados</p></div>
+              <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p><p className="text-xs text-secondary mt-1">Acumulado mes en pantalla: <strong>{monthSnapshot.manager.totalUnitsSold.toLocaleString("es-DO")} pts</strong></p></div>
+              <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados ({selectedDate === todaySantoDomingo ? "Hoy" : formatShortDateEs(selectedDate)})</p></div>
               <div><label htmlFor="daily-general-goal-input" className="admin-summary-label block">Meta general</label><Input id="daily-general-goal-input" disabled={dailyRetryPending} type="number" min={0} step={1} value={dailyGeneralGoal} onChange={(event) => setDailyGeneralGoal(Number(event.target.value || "0"))} /></div>
             </section>
 
@@ -685,7 +830,7 @@ export function AdminDashboard({
                               }}
                               className="ml-auto w-28 sm:w-32 text-right font-display text-lg font-semibold tabular-nums text-foreground border-separator bg-muted"
                             />
-                            {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Guardados: {row.units_sold} · Quedará: {row.units_sold + row.points_to_add}</p>}
+                            {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Hoy: {row.units_sold} · Quedará hoy: {row.units_sold + row.points_to_add} · Mes en TV: {(monthUnitsBySeller.get(row.seller_id) ?? 0) + (selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate ? row.points_to_add : 0)}</p>}
                           </td>
 
                           {/* Input de Meta individual */}
@@ -1230,10 +1375,13 @@ export function AdminDashboard({
         )}
 
         {/* ===================================================================
-            PESTAÑA 4: HISTORIAL DE CAMBIOS (AUDITORÍA) Y DEMOSTRACIÓN SEGURA
+            PESTAÑA 4: HISTORIAL COMPLETO SIN EXCEL, AUDITORÍA Y DEMOSTRACIÓN
            =================================================================== */}
         {activeTab === "audit" && (
           <div className="space-y-6">
+            {/* Historial completo por persona y día (sin necesidad de Excel, conservando botón de exportar Excel) */}
+            <PointsReports />
+
             {/* Inicializador Explícito y Seguro de Datos de Demostración (Sección 13) */}
             <div className="rounded-2xl border border-separator bg-surface p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

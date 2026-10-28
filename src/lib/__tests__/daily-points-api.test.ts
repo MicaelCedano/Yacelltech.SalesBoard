@@ -4,9 +4,9 @@ import { POST } from "@/app/api/admin/sales/route";
 import { GET } from "@/app/api/admin/reports/route";
 import { verifyServerAdminSession, getSupabaseServerClient } from "@/lib/supabase/server";
 import { readDemoDatabase, writeDemoDatabase, createSeedDemoDatabase } from "@/lib/demo-store";
-import { saveBatchDailySales } from "@/lib/data-service";
+import { saveBatchDailySales, fetchSalesBoardSnapshot } from "@/lib/data-service";
 import { batchSaveDailySalesSchema } from "@/lib/validations";
-import { getSantoDomingoToday } from "@/lib/date-utils";
+import { addDaysToDateString, getFirstDayOfMonth, getSantoDomingoToday } from "@/lib/date-utils";
 
 vi.mock("@/lib/supabase/server", () => ({ verifyServerAdminSession: vi.fn(), getSupabaseServerClient: vi.fn() }));
 vi.mock("@/lib/demo-store", async (original) => ({ ...await original<typeof import("@/lib/demo-store")>(), readDemoDatabase: vi.fn(), writeDemoDatabase: vi.fn() }));
@@ -51,5 +51,40 @@ describe("Permisos, validación y sumas locales", () => {
     expect(response.headers.get("Content-Type")).toContain("spreadsheetml");
     expect(response.headers.get("Content-Disposition")).toContain(`YacellTech-puntos-${date}-a-${date}.xlsx`);
     expect(Array.from(new Uint8Array(await response.arrayBuffer()).slice(0, 2))).toEqual([80, 75]);
+  });
+  it("cierra el mes reiniciando la pantalla a 0 para empezar a sumar pero conservando intacto el historial diario", async () => {
+    const today = getSantoDomingoToday();
+    const yesterday = addDaysToDateString(today, -1);
+    const firstOfMonth = getFirstDayOfMonth(today);
+    const beforeMonth = await fetchSalesBoardSnapshot({ preset: "thisMonth" });
+    expect(beforeMonth.manager.totalUnitsSold).toBeGreaterThan(0);
+
+    const closeRes = await POST(
+      new NextRequest("http://localhost/api/admin/sales", {
+        method: "POST",
+        body: JSON.stringify({ request_id: crypto.randomUUID(), mode: "close_month", sale_date: today }),
+      })
+    );
+    expect(closeRes.status).toBe(200);
+    const closeData = await closeRes.json();
+    expect(closeData.closedTotal).toBe(beforeMonth.manager.totalUnitsSold);
+    expect(closeData.snapshot.manager.totalUnitsSold).toBe(0);
+    expect(closeData.monthSnapshot.manager.totalUnitsSold).toBe(0);
+
+    // El historial del mes y del día anterior sigue intacto sin necesidad de Excel
+    const reportRes = await GET(
+      new NextRequest(`http://localhost/api/admin/reports?startDate=${firstOfMonth}&endDate=${today}`)
+    );
+    expect(reportRes.status).toBe(200);
+    const report = await reportRes.json();
+    expect(report.total).toBe(beforeMonth.manager.totalUnitsSold);
+    expect(report.closures).toHaveLength(1);
+    expect(report.closures[0].totalPoints).toBe(beforeMonth.manager.totalUnitsSold);
+
+    // El día anterior conserva sus puntos exactos
+    const yesterdaySnap = await fetchSalesBoardSnapshot({ preset: "yesterday" });
+    expect(yesterdaySnap.manager.totalUnitsSold).toBe(59);
+    const yesterdayRow = report.days.find((d: { date: string }) => d.date === yesterday);
+    expect(yesterdayRow?.total).toBe(59);
   });
 });

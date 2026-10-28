@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { saveBatchDailySales } from "@/lib/data-service";
+import { closeCurrentMonthAndResetBoard, saveBatchDailySales } from "@/lib/data-service";
 import { verifyServerAdminSession } from "@/lib/supabase/server";
-import { batchSaveDailySalesSchema } from "@/lib/validations";
+import { batchSaveDailySalesSchema, closeMonthSalesSchema } from "@/lib/validations";
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,6 +14,27 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+
+    if (body && typeof body === "object" && (body as { mode?: unknown }).mode === "close_month") {
+      const parsedClose = closeMonthSalesSchema.safeParse(body);
+      if (!parsedClose.success) {
+        return NextResponse.json(
+          {
+            error: parsedClose.error.issues[0]?.message ?? "Datos de cierre de mes inválidos",
+            issues: parsedClose.error.issues,
+          },
+          { status: 400 }
+        );
+      }
+
+      const closeResult = await closeCurrentMonthAndResetBoard(parsedClose.data, {
+        userId: session.userId,
+        email: session.email ?? "admin@yacelltech.com",
+      });
+
+      return NextResponse.json(closeResult, { status: 200 });
+    }
+
     const parsed = batchSaveDailySalesSchema.safeParse(body);
 
     if (!parsed.success) {

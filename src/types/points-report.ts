@@ -1,3 +1,21 @@
+export interface MonthClosureSellerItem {
+  sellerId: string;
+  sellerName: string;
+  monthPoints: number;
+  dayPointsClosed: number;
+}
+
+export interface MonthClosureSummary {
+  id: string;
+  closedDate: string;
+  periodStart: string;
+  periodEnd: string;
+  totalPoints: number;
+  closedAt: string;
+  closedBy: string;
+  sellers: MonthClosureSellerItem[];
+}
+
 export interface PointsReport {
   startDate: string;
   endDate: string;
@@ -10,4 +28,5 @@ export interface PointsReport {
     date: string; sellerId: string; sellerName: string; type: string;
     points: number; previous: number; total: number; appliedAt: string; appliedBy: string;
   }[];
+  closures?: MonthClosureSummary[];
 }

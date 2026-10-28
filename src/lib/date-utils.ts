@@ -1,6 +1,31 @@
 import { DateFilterPreset, DateRangeFilter } from "@/types/salesboard";
 
 export const SANTO_DOMINGO_TZ = "America/Santo_Domingo";
+export const CYCLE_START_MARKER_GOAL_DATE = "1970-01-01";
+
+/**
+ * Codifica una fecha YYYY-MM-DD como entero YYYYMMDD para almacenarla en el marcador de inicio de ciclo.
+ */
+export function encodeDateAsGoalInt(dateStr: string): number {
+  return Number(dateStr.replaceAll("-", ""));
+}
+
+/**
+ * Decodifica un entero YYYYMMDD a fecha YYYY-MM-DD si es válido.
+ */
+export function decodeGoalIntAsDate(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 20000101 || value > 29991231) {
+    return null;
+  }
+  const raw = String(value);
+  if (raw.length !== 8) return null;
+  const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  const dt = new Date(`${formatted}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime()) || dt.toISOString().slice(0, 10) !== formatted) {
+    return null;
+  }
+  return formatted;
+}
 
 /**
  * Obtiene la fecha actual en formato YYYY-MM-DD dentro de la zona horaria America/Santo_Domingo.
