@@ -72,7 +72,7 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .public-board[data-tv="true"] .seller-meta-label,
 .public-board[data-tv="true"] .seller-unit-label,
 .public-board[data-tv="true"] .manager-progress-labels { font-weight: 550; }
-.public-board[data-tv="true"] .seller-bar-label { left: 0; width: 100%; min-width: 0; transform: none; margin-bottom: 8px; }
+.public-board[data-tv="true"] .seller-bar-label { left: 0; right: 0; width: max-content; transform: none; margin: 0 auto 8px; }
 .board-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 62px; flex-shrink: 0; }
 .yacelltech-logo { flex-shrink: 0; padding: 5px 8px; border-radius: 8px; }
 .yacelltech-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
