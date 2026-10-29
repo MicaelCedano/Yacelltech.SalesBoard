@@ -33,7 +33,7 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-type AdminTab = "daily" | "reports" | "sellers" | "manager" | "audit";
+type AdminTab = "daily" | "reports" | "sellers" | "goals" | "manager" | "audit";
 
 interface EditableDailyRow {
   seller_id: string;
@@ -105,6 +105,9 @@ export function AdminDashboard({
   );
   const [defaultMonthlySellerGoal, setDefaultMonthlySellerGoal] = useState(
     initialSnapshot.settings.default_monthly_seller_goal ?? 400
+  );
+  const [defaultMonthlyManagerGoal, setDefaultMonthlyManagerGoal] = useState(
+    initialSnapshot.settings.default_monthly_manager_goal ?? 1000
   );
   const [storeName, setStoreName] = useState(
     initialSnapshot.settings.store_name
@@ -508,7 +511,7 @@ export function AdminDashboard({
     }
   };
 
-  const handleSaveManagerSettings = async (e: React.FormEvent) => {
+  const handleSaveManagerSettings = async (e: React.FormEvent, scope: "manager" | "sellers" = "manager") => {
     e.preventDefault();
     if (isUploadingManagerPhoto || isSavingManager) return;
     setIsSavingManager(true);
@@ -516,7 +519,11 @@ export function AdminDashboard({
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: JSON.stringify(scope === "sellers" ? {
+          ...snapshot.settings,
+          default_monthly_seller_goal: defaultMonthlySellerGoal,
+          expected_version: snapshot.settings.version,
+        } : {
           store_name: storeName.trim() || "YACELLTECH",
           board_title: boardTitle.trim() || "Ranking de puntos",
           manager_name: managerName.trim(),
@@ -524,10 +531,9 @@ export function AdminDashboard({
           manager_avatar_url: managerAvatarUrl.trim()
             ? managerAvatarUrl.trim()
             : null,
-          default_monthly_seller_goal: Math.max(
-            0,
-            Math.floor(Number(defaultMonthlySellerGoal) || 0)
-          ),
+          default_monthly_seller_goal: snapshot.settings.default_monthly_seller_goal ?? 400,
+          default_monthly_manager_goal: defaultMonthlyManagerGoal,
+          expected_version: snapshot.settings.version,
         }),
       });
 
@@ -541,7 +547,7 @@ export function AdminDashboard({
       broadcastBoardUpdate();
       showNotification(
         "success",
-        "Configuración del Manager General actualizada y publicada."
+        scope === "sellers" ? "Meta mensual de los vendedores actualizada y publicada." : "Configuración del Manager General actualizada y publicada."
       );
     } catch (err) {
       showNotification(
@@ -603,12 +609,22 @@ export function AdminDashboard({
         </div>
         <nav className="admin-nav" aria-label="Secciones administrativas">
           {([
-            ["daily", "Registro diario"], ["reports", "Reportes / Excel"], ["sellers", "Vendedores"], ["manager", "Manager General"], ["audit", "Historial"],
+            ["daily", "Registro diario"], ["reports", "Reportes / Excel"], ["sellers", "Vendedores"], ["goals", "Meta vendedores"], ["manager", "Manager General"], ["audit", "Historial"],
           ] as const).map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? "page" : undefined}>{label}</button>)}
         </nav>
       </header>
       <main className="admin-main space-y-6">
         {activeTab === "reports" && <PointsReports />}
+        {activeTab === "goals" && (
+          <section className="mx-auto max-w-2xl rounded-2xl border border-separator bg-surface p-6 space-y-5">
+            <div><h1 className="font-display text-xl font-semibold">Meta mensual de los vendedores</h1><p className="mt-2 text-sm text-secondary">Configura un mismo objetivo para todos los vendedores. Cada uno acumula sus puntos durante el mes.</p></div>
+            <form onSubmit={(event) => void handleSaveManagerSettings(event, "sellers")} className="space-y-4">
+              <div><label htmlFor="monthly-seller-goal" className="mb-1.5 block text-sm font-semibold">Objetivo mensual para cada vendedor (Puntos)</label><Input id="monthly-seller-goal" aria-label="Objetivo mensual para cada vendedor" type="number" min={0} max={100000} step={1} required value={defaultMonthlySellerGoal} onChange={(event) => setDefaultMonthlySellerGoal(Number(event.target.value))} /></div>
+              <p className="text-sm text-secondary">El Manager General tiene un objetivo mensual independiente, configurable en su propia sección.</p>
+              <Button type="submit" disabled={isSavingManager}>{isSavingManager ? "Guardando..." : "Guardar meta de vendedores"}</Button>
+            </form>
+          </section>
+        )}
         {/* ===================================================================
             PESTAÑA 1: REGISTRO DIARIO DE PUNTOS Y CONSULTA POR FECHAS
            =================================================================== */}
@@ -704,7 +720,7 @@ export function AdminDashboard({
             <section className="admin-summary" aria-label="Resumen diario de la tienda">
               <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p><p className="text-xs text-secondary mt-1">Acumulado mes en pantalla: <strong>{monthSnapshot.manager.totalUnitsSold.toLocaleString("es-DO")} pts</strong></p></div>
               <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados ({selectedDate === todaySantoDomingo ? "Hoy" : formatShortDateEs(selectedDate)})</p></div>
-              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p><p className="text-xs text-secondary mt-2">Meta mensual del equipo: {monthSnapshot.manager.generalGoal.toLocaleString("es-DO")} puntos</p></div>
+              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p><p className="text-xs text-secondary mt-2">Meta mensual del Manager: {(snapshot.settings.default_monthly_manager_goal ?? 1000).toLocaleString("es-DO")} puntos</p></div>
             </section>
 
             {/* Tabla Editable de Registro Diario (Sección 7.1) */}
@@ -1231,20 +1247,20 @@ export function AdminDashboard({
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-secondary">
-                    Objetivo mensual para cada vendedor (Puntos) *
+                    Objetivo mensual del Manager General (Puntos) *
                   </label>
                   <Input
                     type="number"
                     min={0}
                     step={1}
                     required
-                    id="monthly-seller-goal"
-                    aria-label="Objetivo mensual para cada vendedor"
-                    value={defaultMonthlySellerGoal}
-                    onChange={(e) => setDefaultMonthlySellerGoal(Math.max(0, parseInt(e.target.value || "0", 10)))}
+                    id="monthly-manager-goal"
+                    aria-label="Objetivo mensual del Manager General"
+                    max={100000}
+                    value={defaultMonthlyManagerGoal}
+                    onChange={(e) => setDefaultMonthlyManagerGoal(Number(e.target.value))}
                   />
-                  <p className="mt-1 text-xs text-secondary">Este mismo objetivo se aplica a todos los vendedores. Los puntos se registran por fecha y se acumulan durante el mes.</p>
-                  <p className="mt-2 text-sm text-foreground">Meta mensual del equipo: <strong>{(defaultMonthlySellerGoal * snapshot.allSellersAdminTable.filter((item) => item.seller.is_active).length).toLocaleString("es-DO")} puntos</strong> · {snapshot.allSellersAdminTable.filter((item) => item.seller.is_active).length} vendedores activos.</p>
+                  <p className="mt-1 text-xs text-secondary">Los puntos de todos los vendedores se suman hacia este objetivo. Puedes cambiarlo sin modificar la meta mensual de los vendedores.</p>
                 </div>
 
                 <div>

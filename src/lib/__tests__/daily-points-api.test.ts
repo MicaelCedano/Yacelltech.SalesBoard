@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "@/app/api/admin/sales/route";
 import { GET } from "@/app/api/admin/reports/route";
+import { PATCH } from "@/app/api/admin/settings/route";
 import { verifyServerAdminSession, getSupabaseServerClient } from "@/lib/supabase/server";
 import { readDemoDatabase, writeDemoDatabase, createSeedDemoDatabase } from "@/lib/demo-store";
 import { saveBatchDailySales, fetchSalesBoardSnapshot, updateManagerSettingsRecord } from "@/lib/data-service";
@@ -28,9 +29,9 @@ describe("Permisos, validación y sumas locales", () => {
     expect(response.status).toBe(200);
     expect(db.dailyGoals).toEqual(goals);
     expect(db.sellers).toEqual(sellers);
-    expect((await response.json()).snapshot.manager.generalGoal).toBe(db.sellers.filter((item) => item.is_active).length * 400);
+    expect((await response.json()).snapshot.manager.generalGoal).toBe(1000);
   });
-  it("configura una sola meta mensual y deriva la del equipo sin alterar metas diarias antiguas", async () => {
+  it("cambiar la meta de vendedores conserva la del Manager y las metas históricas", async () => {
     const db = readDemoDatabase(); const goals = structuredClone(db.dailyGoals);
     const oldGoal = db.settings.default_general_goal;
     await updateManagerSettingsRecord(updateManagerSettingsSchema.parse({ ...db.settings,
@@ -40,8 +41,31 @@ describe("Permisos, validación y sumas locales", () => {
     expect(db.settings.default_general_goal).toBe(oldGoal);
     expect(db.dailyGoals).toEqual(goals);
     const board = await fetchSalesBoardSnapshot({ preset: "thisMonth" });
-    expect(board.manager.generalGoal).toBe(db.sellers.filter((item) => item.is_active).length * 500);
+    expect(board.manager.generalGoal).toBe(1000);
     expect(board.allSellersAdminTable.every((item) => item.effectiveGoal === 500)).toBe(true);
+  });
+  it("guarda la meta propia del Manager desde la API sin cambiar puntos ni meta de vendedores", async () => {
+    const db = readDemoDatabase(); const sales = structuredClone(db.dailySales);
+    const result = await PATCH(new NextRequest("http://localhost/api/admin/settings", { method: "PATCH", body: JSON.stringify({
+      ...db.settings, default_monthly_manager_goal: 750,
+    }) }));
+    expect(result.status).toBe(200);
+    expect(db.settings.default_monthly_manager_goal).toBe(750);
+    expect(db.settings.default_monthly_seller_goal).toBe(400);
+    expect(db.dailySales).toEqual(sales);
+    expect((await fetchSalesBoardSnapshot({ preset: "thisMonth" })).manager.generalGoal).toBe(750);
+    const log = db.auditLogs.find((item) => item.action_type === "MANAGER_SETTINGS_UPDATED")!;
+    expect(log.previous_values?.default_monthly_manager_goal).toBe(1000);
+    expect(log.new_values?.default_monthly_manager_goal).toBe(750);
+  });
+  it("la API protege y valida la meta mensual del Manager", async () => {
+    const db = readDemoDatabase();
+    for (const target of [-1, 1.5, 100001]) {
+      expect((await PATCH(new NextRequest("http://localhost/api/admin/settings", { method: "PATCH", body: JSON.stringify({ ...db.settings, default_monthly_manager_goal: target }) }))).status).toBe(400);
+    }
+    vi.mocked(verifyServerAdminSession).mockResolvedValue({ isAdmin: false, userId: null, email: null, mode: "demo-local" });
+    expect((await PATCH(new NextRequest("http://localhost/api/admin/settings", { method: "PATCH", body: JSON.stringify({ ...db.settings, default_monthly_manager_goal: 750 }) }))).status).toBe(403);
+    expect(writeDemoDatabase).not.toHaveBeenCalled();
   });
   it("no permite guardar ni exportar sin administrador", async () => {
     vi.mocked(verifyServerAdminSession).mockResolvedValue({ isAdmin: false, userId: null, email: null, mode: "demo-local" });

@@ -160,7 +160,7 @@ describe("YacellTech SalesBoard - Cálculos y Reglas de Negocio", () => {
       },
     ];
 
-    // Los puntos incluyen al vendedor oculto y la meta suma las 6 metas mensuales.
+    // Los puntos incluyen al vendedor oculto; la meta del Manager es independiente.
     const salesToday: DailySaleRecord[] = [
       {
         id: "s1",
@@ -215,9 +215,9 @@ describe("YacellTech SalesBoard - Cálculos y Reglas de Negocio", () => {
     });
 
     expect(snapshot.manager.totalUnitsSold).toBe(34);
-    expect(snapshot.manager.generalGoal).toBe(2400);
-    expect(snapshot.manager.completionPercent).toBe(1);
-    expect(snapshot.manager.remainingUnits).toBe(2366);
+    expect(snapshot.manager.generalGoal).toBe(1000);
+    expect(snapshot.manager.completionPercent).toBe(3);
+    expect(snapshot.manager.remainingUnits).toBe(966);
     // Pedro no aparece en las barras públicas, pero sí en el total del Manager
     expect(snapshot.rankedSellers).toHaveLength(5);
   });
@@ -408,7 +408,7 @@ describe("YacellTech SalesBoard - Cálculos y Reglas de Negocio", () => {
     });
 
     expect(newDaySnapshot.manager.totalUnitsSold).toBe(0);
-    expect(newDaySnapshot.manager.generalGoal).toBe(2000);
+    expect(newDaySnapshot.manager.generalGoal).toBe(1000);
     expect(newDaySnapshot.rankedSellers.every((s) => s.unitsSold === 0)).toBe(true);
     expect(newDaySnapshot.rankedSellers.every((s) => s.medal === "none")).toBe(true);
 
@@ -423,7 +423,7 @@ describe("YacellTech SalesBoard - Cálculos y Reglas de Negocio", () => {
     });
 
     expect(rangeSnapshot.manager.totalUnitsSold).toBe(25);
-    expect(rangeSnapshot.manager.generalGoal).toBe(2000); // 5 vendedores × 400, sin multiplicar por días
+    expect(rangeSnapshot.manager.generalGoal).toBe(1000); // Meta mensual del Manager, sin multiplicar por días
     const carlosRange = rangeSnapshot.rankedSellers.find((s) => s.seller.full_name === "Carlos");
     expect(carlosRange?.unitsSold).toBe(25);
     expect(carlosRange?.effectiveGoal).toBe(400);

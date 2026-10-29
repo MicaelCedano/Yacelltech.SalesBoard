@@ -97,6 +97,8 @@ export const updateManagerSettingsSchema = z.object({
   manager_avatar_url: z.string().url("URL de fotografía inválida").nullable().optional(),
   default_general_goal: nonNegativeIntSchema.optional(),
   default_monthly_seller_goal: nonNegativeIntSchema,
+  // Los clientes anteriores pueden omitirlo; conservar el objetivo almacenado.
+  default_monthly_manager_goal: nonNegativeIntSchema.optional(),
   expected_version: z.number().int().min(1).optional(),
 });
 

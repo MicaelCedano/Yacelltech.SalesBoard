@@ -20,6 +20,7 @@ export interface AppSettings {
   /** Dato histórico; no interviene en las metas actuales. */
   default_general_goal: number;
   default_monthly_seller_goal?: number;
+  default_monthly_manager_goal?: number;
   timezone: string;
   is_demo_environment: boolean;
   version: number;

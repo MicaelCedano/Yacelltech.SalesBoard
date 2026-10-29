@@ -35,21 +35,40 @@ describe("Meta mensual compartida", () => {
   it("usa solo la meta mensual también al consultar un día, incluido el primero del mes", () => {
     const board = snapshot(resolveDateRangeFilter("today", "2026-11-01"));
     expect(board.allSellersAdminTable.every((seller) => seller.effectiveGoal === 400)).toBe(true);
-    expect(board.manager.generalGoal).toBe(board.allSellersAdminTable.filter((item) => item.seller.is_active).length * 400);
+    expect(board.manager.generalGoal).toBe(1000);
   });
 
   it("acumula una meta por mes cuando el rango incluye dos meses desde el día primero", () => {
     const filter = resolveDateRangeFilter("custom", "2026-11-02", "2026-10-01", "2026-11-02");
     expect(snapshot(filter).allSellersAdminTable.every((seller) => seller.effectiveGoal === 800)).toBe(true);
+    expect(snapshot(filter).manager.generalGoal).toBe(2000);
   });
 
-  it("calcula la meta del Manager con vendedores activos, incluidos ocultos, sin contar inactivos", () => {
+  it("mantiene el objetivo propio del Manager aunque cambien vendedores activos y visibles", () => {
     const db = createSeedDemoDatabase("daily_34_of_50");
     const sellers = db.sellers.map((seller, index) => ({ ...seller, is_active: index !== 0, show_on_board: index > 1 }));
-    const board = buildSalesBoardSnapshot({ settings: { ...db.settings, default_monthly_seller_goal: 400 }, sellers,
+    const board = buildSalesBoardSnapshot({ settings: { ...db.settings, default_monthly_seller_goal: 400, default_monthly_manager_goal: 1200 }, sellers,
       dailySales: [], dailyGoals: [{ id: "old", goal_date: "2026-10-29", general_goal: 9999, created_at: "", updated_at: "" }],
       dateFilter: resolveDateRangeFilter("today", "2026-10-29"), dataSource: "demo-local" });
-    expect(board.manager.generalGoal).toBe(sellers.filter((seller) => seller.is_active).length * 400);
+    expect(board.manager.generalGoal).toBe(1200);
+    expect(board.allSellersAdminTable.every((item) => item.effectiveGoal === 400)).toBe(true);
     expect(board.goalMonths).toBe(1);
+  });
+
+  it("compara los puntos globales con la meta propia, admite cero y marca la meta completada", () => {
+    const db = createSeedDemoDatabase("daily_34_of_50");
+    const build = (goal: number) => buildSalesBoardSnapshot({
+      settings: { ...db.settings, default_monthly_manager_goal: goal }, sellers: db.sellers,
+      dailySales: db.dailySales, dailyGoals: db.dailyGoals,
+      dateFilter: resolveDateRangeFilter("today", db.dailySales[0]!.sale_date), dataSource: "demo-local",
+    });
+    const met = build(1);
+    expect(met.manager.totalUnitsSold).toBeGreaterThan(1);
+    expect(met.manager.isGoalMet).toBe(true);
+    expect(met.manager.remainingUnits).toBe(0);
+    const none = build(0);
+    expect(none.manager.generalGoal).toBe(0);
+    expect(none.manager.completionPercent).toBe(0);
+    expect(none.manager.isGoalMet).toBe(false);
   });
 });

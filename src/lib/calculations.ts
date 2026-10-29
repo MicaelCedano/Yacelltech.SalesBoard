@@ -237,7 +237,8 @@ export function buildSalesBoardSnapshot(params: {
 
   const activeSellers = sellers.filter((s) => s.is_active);
   const visibleBoardSellers = activeSellers.filter((s) => s.show_on_board);
-  const totalGeneralGoal = monthlyGoalForRange * activeSellers.length * monthCount;
+  const monthlyManagerGoal = Math.max(0, settings.default_monthly_manager_goal ?? 1000);
+  const totalGeneralGoal = monthlyManagerGoal * monthCount;
 
   const managerCompletionPercent =
     totalGeneralGoal > 0 ? Math.round((managerTotalUnits * 100) / totalGeneralGoal) : 0;
@@ -283,6 +284,7 @@ export function buildSalesBoardSnapshot(params: {
     settings: {
       ...settings,
       default_monthly_seller_goal: monthlyGoalForRange,
+      default_monthly_manager_goal: monthlyManagerGoal,
       // Show the new default for existing boards while preserving custom titles.
       board_title: settings.board_title === "Ranking de ventas" ? "Ranking de puntos" : settings.board_title,
     },
