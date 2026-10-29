@@ -511,7 +511,7 @@ export function AdminDashboard({
     }
   };
 
-  const handleSaveManagerSettings = async (e: React.FormEvent, scope: "manager" | "sellers" = "manager") => {
+  const handleSaveManagerSettings = async (e: React.FormEvent, scope: "manager" | "goals" = "manager") => {
     e.preventDefault();
     if (isUploadingManagerPhoto || isSavingManager) return;
     setIsSavingManager(true);
@@ -519,9 +519,10 @@ export function AdminDashboard({
       const res = await fetch("/api/admin/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(scope === "sellers" ? {
+        body: JSON.stringify(scope === "goals" ? {
           ...snapshot.settings,
           default_monthly_seller_goal: defaultMonthlySellerGoal,
+          default_monthly_manager_goal: defaultMonthlyManagerGoal,
           expected_version: snapshot.settings.version,
         } : {
           store_name: storeName.trim() || "YACELLTECH",
@@ -532,7 +533,7 @@ export function AdminDashboard({
             ? managerAvatarUrl.trim()
             : null,
           default_monthly_seller_goal: snapshot.settings.default_monthly_seller_goal ?? 400,
-          default_monthly_manager_goal: defaultMonthlyManagerGoal,
+          default_monthly_manager_goal: snapshot.settings.default_monthly_manager_goal ?? 1000,
           expected_version: snapshot.settings.version,
         }),
       });
@@ -547,7 +548,7 @@ export function AdminDashboard({
       broadcastBoardUpdate();
       showNotification(
         "success",
-        scope === "sellers" ? "Meta mensual de los vendedores actualizada y publicada." : "Configuración del Manager General actualizada y publicada."
+        scope === "goals" ? "Metas mensuales actualizadas y publicadas." : "Configuración del Manager General actualizada y publicada."
       );
     } catch (err) {
       showNotification(
@@ -609,19 +610,31 @@ export function AdminDashboard({
         </div>
         <nav className="admin-nav" aria-label="Secciones administrativas">
           {([
-            ["daily", "Registro diario"], ["reports", "Reportes / Excel"], ["sellers", "Vendedores"], ["goals", "Meta vendedores"], ["manager", "Manager General"], ["audit", "Historial"],
+            ["daily", "Registro diario"], ["reports", "Reportes / Excel"], ["sellers", "Vendedores"], ["goals", "Metas"], ["manager", "Manager General"], ["audit", "Historial"],
           ] as const).map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? "page" : undefined}>{label}</button>)}
         </nav>
       </header>
       <main className="admin-main space-y-6">
         {activeTab === "reports" && <PointsReports />}
         {activeTab === "goals" && (
-          <section className="mx-auto max-w-2xl rounded-2xl border border-separator bg-surface p-6 space-y-5">
-            <div><h1 className="font-display text-xl font-semibold">Meta mensual de los vendedores</h1><p className="mt-2 text-sm text-secondary">Configura un mismo objetivo para todos los vendedores. Cada uno acumula sus puntos durante el mes.</p></div>
-            <form onSubmit={(event) => void handleSaveManagerSettings(event, "sellers")} className="space-y-4">
-              <div><label htmlFor="monthly-seller-goal" className="mb-1.5 block text-sm font-semibold">Objetivo mensual para cada vendedor (Puntos)</label><Input id="monthly-seller-goal" aria-label="Objetivo mensual para cada vendedor" type="number" min={0} max={100000} step={1} required value={defaultMonthlySellerGoal} onChange={(event) => setDefaultMonthlySellerGoal(Number(event.target.value))} /></div>
-              <p className="text-sm text-secondary">El Manager General tiene un objetivo mensual independiente, configurable en su propia sección.</p>
-              <Button type="submit" disabled={isSavingManager}>{isSavingManager ? "Guardando..." : "Guardar meta de vendedores"}</Button>
+          <section className="mx-auto max-w-3xl rounded-2xl border border-separator bg-surface p-6 space-y-5">
+            <div><h1 className="font-display text-xl font-semibold">Metas</h1><p className="mt-2 text-sm text-secondary">Configura las metas mensuales de los vendedores y del supervisor. Cada objetivo es independiente.</p></div>
+            <form onSubmit={(event) => void handleSaveManagerSettings(event, "goals")}>
+              <fieldset disabled={isSavingManager} className="space-y-5 min-w-0">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div className="rounded-xl border border-separator bg-muted p-4">
+                    <label htmlFor="monthly-seller-goal" className="mb-2 block text-sm font-semibold">Meta mensual por vendedor (Puntos)</label>
+                    <Input id="monthly-seller-goal" aria-label="Meta mensual por vendedor" type="number" min={0} max={100000} step={1} required value={defaultMonthlySellerGoal} onChange={(event) => setDefaultMonthlySellerGoal(Number(event.target.value))} />
+                    <p className="mt-2 text-xs text-secondary">La misma meta se aplica a cada vendedor, con sus propios puntos acumulados durante el mes.</p>
+                  </div>
+                  <div className="rounded-xl border border-separator bg-muted p-4">
+                    <label htmlFor="monthly-manager-goal" className="mb-2 block text-sm font-semibold">Meta mensual del supervisor (Puntos)</label>
+                    <Input id="monthly-manager-goal" aria-label="Meta mensual del supervisor" type="number" min={0} max={100000} step={1} required value={defaultMonthlyManagerGoal} onChange={(event) => setDefaultMonthlyManagerGoal(Number(event.target.value))} />
+                    <p className="mt-2 text-xs text-secondary">Objetivo del Manager General. Suma los puntos de todos los vendedores para alcanzar esta meta.</p>
+                  </div>
+                </div>
+                <Button type="submit">{isSavingManager ? "Guardando..." : "Guardar metas"}</Button>
+              </fieldset>
             </form>
           </section>
         )}
@@ -1245,23 +1258,7 @@ export function AdminDashboard({
 
 
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-secondary">
-                    Objetivo mensual del Manager General (Puntos) *
-                  </label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={1}
-                    required
-                    id="monthly-manager-goal"
-                    aria-label="Objetivo mensual del Manager General"
-                    max={100000}
-                    value={defaultMonthlyManagerGoal}
-                    onChange={(e) => setDefaultMonthlyManagerGoal(Number(e.target.value))}
-                  />
-                  <p className="mt-1 text-xs text-secondary">Los puntos de todos los vendedores se suman hacia este objetivo. Puedes cambiarlo sin modificar la meta mensual de los vendedores.</p>
-                </div>
+                <p className="text-sm text-secondary sm:col-span-2">Configura los objetivos mensuales de vendedores y supervisor en <button type="button" className="text-accent underline" onClick={() => setActiveTab("goals")}>Metas</button>.</p>
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-secondary">
