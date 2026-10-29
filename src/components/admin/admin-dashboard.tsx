@@ -111,6 +111,9 @@ export function AdminDashboard({
   const [defaultGeneralGoal, setDefaultGeneralGoal] = useState(
     initialSnapshot.settings.default_general_goal
   );
+  const [defaultMonthlySellerGoal, setDefaultMonthlySellerGoal] = useState(
+    initialSnapshot.settings.default_monthly_seller_goal ?? 400
+  );
   const [storeName, setStoreName] = useState(
     initialSnapshot.settings.store_name
   );
@@ -540,6 +543,10 @@ export function AdminDashboard({
             0,
             Math.floor(Number(defaultGeneralGoal) || 0)
           ),
+          default_monthly_seller_goal: Math.max(
+            0,
+            Math.floor(Number(defaultMonthlySellerGoal) || 0)
+          ),
         }),
       });
 
@@ -760,7 +767,7 @@ export function AdminDashboard({
                       <th className="py-3.5 px-4 text-right w-48">
                         {dailyMode === "add" ? "Puntos a sumar" : "Total del día"}
                       </th>
-                      <th className="py-3.5 px-4 text-right w-40">Meta</th>
+                      <th className="py-3.5 px-4 text-right w-40">Meta diaria</th>
                       <th className="py-3.5 px-4 text-center">Progreso</th>
                       <th className="py-3.5 px-4 text-center">En TV</th>
                     </tr>
@@ -833,13 +840,13 @@ export function AdminDashboard({
                             {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Hoy: {row.units_sold} · Quedará hoy: {row.units_sold + row.points_to_add} · Mes en TV: {(monthUnitsBySeller.get(row.seller_id) ?? 0) + (selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate ? row.points_to_add : 0)}</p>}
                           </td>
 
-                          {/* Input de Meta individual */}
+                          {/* Meta diaria individual */}
                           <td className="py-3.5 px-4 text-right">
                             <Input
                               type="number"
                               min={0}
                               step={1}
-                              aria-label={`Meta individual de ${row.full_name}`}
+                              aria-label={`Meta diaria individual de ${row.full_name}`}
                               disabled={dailyRetryPending}
                               value={row.individual_goal}
                               onChange={(e) => {
@@ -1187,9 +1194,9 @@ export function AdminDashboard({
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-secondary">
                           <span>
-                            Meta individual:{" "}
+                            Meta diaria individual:{" "}
                             <strong className="text-foreground">
-                              {seller.individual_goal} puntos
+                              {seller.individual_goal} puntos/día
                             </strong>
                           </span>
                           <span>•</span>
@@ -1331,6 +1338,23 @@ export function AdminDashboard({
                       )
                     }
                   />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-secondary">
+                    Objetivo mensual para cada vendedor (Puntos) *
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    required
+                    id="monthly-seller-goal"
+                    aria-label="Objetivo mensual para cada vendedor"
+                    value={defaultMonthlySellerGoal}
+                    onChange={(e) => setDefaultMonthlySellerGoal(Math.max(0, parseInt(e.target.value || "0", 10)))}
+                  />
+                  <p className="mt-1 text-xs text-secondary">Este mismo objetivo se aplica a todos los vendedores en las vistas mensuales.</p>
                 </div>
 
                 <div>

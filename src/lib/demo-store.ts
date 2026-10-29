@@ -54,6 +54,7 @@ export function createSeedDemoDatabase(
     manager_avatar_url:
       "https://api.dicebear.com/9.x/avataaars/svg?seed=RobertoManagerYacell&backgroundColor=0284c7",
     default_general_goal: defaultGoal,
+    default_monthly_seller_goal: 400,
     timezone: "America/Santo_Domingo",
     is_demo_environment: true,
     version: 1,

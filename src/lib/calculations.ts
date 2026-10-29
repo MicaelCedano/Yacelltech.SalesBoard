@@ -166,6 +166,12 @@ export function buildSalesBoardSnapshot(params: {
 
   const datesInRange = enumerateDatesBetween(dateFilter.startDate, dateFilter.endDate);
   const numDays = Math.max(1, datesInRange.length);
+  const monthCount = datesInRange.length > 1
+    ? new Set(datesInRange.map((date) => date.slice(0, 7))).size
+    : 1;
+  const monthlyGoalForRange = dateFilter.preset === "thisMonth" || (numDays > 1 && dateFilter.startDate.endsWith("-01"))
+    ? settings.default_monthly_seller_goal ?? null
+    : null;
   const dateSet = new Set(datesInRange);
 
   // 1. Deduplicar registros diarios por (seller_id, sale_date) quedándose con el más reciente
@@ -268,10 +274,22 @@ export function buildSalesBoardSnapshot(params: {
   };
 
   // 4. Construir y clasificar los vendedores visibles en el tablero público
-  const rankedSellers = computeRankedSellerStats(visibleBoardSellers, salesBySeller, numDays);
+  const rankedSellers = computeRankedSellerStats(
+    visibleBoardSellers,
+    salesBySeller,
+    numDays,
+    monthlyGoalForRange,
+    monthCount
+  );
 
   // 5. Construir lista completa para el panel administrativo (todos los vendedores activos Primero, luego inactivos)
-  const allSellersAdminTable = computeRankedSellerStats(sellers, salesBySeller, numDays);
+  const allSellersAdminTable = computeRankedSellerStats(
+    sellers,
+    salesBySeller,
+    numDays,
+    monthlyGoalForRange,
+    monthCount
+  );
 
   return {
     settings: {
@@ -305,7 +323,9 @@ export function computeRankedSellerStats(
       singleDayGoalSnapshot: number | null;
     }
   >,
-  numDays: number
+  numDays: number,
+  monthlyGoal: number | null,
+  monthCount: number
 ): RankedSellerStat[] {
   // Ordenar por unidades vendidas DESC; en caso de empate, por display_order ASC y nombre ASC
   const sorted = [...sellersList].sort((a, b) => {
@@ -342,11 +362,11 @@ export function computeRankedSellerStats(
   return sorted.map((seller, index) => {
     const agg = salesBySeller.get(seller.id);
     const unitsSold = agg?.totalUnits ?? 0;
-    const baseDailyGoal =
-      numDays === 1 && agg?.singleDayGoalSnapshot != null
-        ? agg.singleDayGoalSnapshot
-        : seller.individual_goal;
-    const effectiveGoal = Math.max(0, baseDailyGoal * numDays);
+    const effectiveGoal = monthlyGoal !== null
+      ? Math.max(0, monthlyGoal * monthCount)
+      : numDays === 1
+        ? Math.max(0, agg?.singleDayGoalSnapshot ?? seller.individual_goal)
+        : Math.max(0, seller.individual_goal * numDays);
 
     const goalCompletionPercent =
       effectiveGoal > 0 ? Math.round((unitsSold / effectiveGoal) * 100) : 0;

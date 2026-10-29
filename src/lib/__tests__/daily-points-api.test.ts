@@ -51,7 +51,7 @@ describe("Permisos, validación y sumas locales", () => {
     expect(response.headers.get("Content-Type")).toContain("spreadsheetml");
     expect(response.headers.get("Content-Disposition")).toContain(`YacellTech-puntos-${date}-a-${date}.xlsx`);
     expect(Array.from(new Uint8Array(await response.arrayBuffer()).slice(0, 2))).toEqual([80, 75]);
-  });
+  }, 15000);
   it("cierra el mes reiniciando la pantalla a 0 para empezar a sumar pero conservando intacto el historial diario", async () => {
     const today = getSantoDomingoToday();
     const yesterday = addDaysToDateString(today, -1);

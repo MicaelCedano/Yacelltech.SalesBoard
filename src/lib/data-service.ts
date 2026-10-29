@@ -113,6 +113,7 @@ export async function fetchSalesBoardSnapshot(params?: {
       manager_label: "MANAGER GENERAL",
       manager_avatar_url: null,
       default_general_goal: 50,
+      default_monthly_seller_goal: 400,
       timezone: "America/Santo_Domingo",
       is_demo_environment: false,
       version: 1,
@@ -771,6 +772,7 @@ export async function updateManagerSettingsRecord(
             ? input.manager_avatar_url
             : (currentSettings as AppSettings | null)?.manager_avatar_url ?? null,
         default_general_goal: input.default_general_goal,
+        default_monthly_seller_goal: input.default_monthly_seller_goal,
         version: nextVersion,
         updated_by: actor.userId,
         updated_at: nowIso,
@@ -823,6 +825,7 @@ export async function updateManagerSettingsRecord(
         ? input.manager_avatar_url
         : previous.manager_avatar_url,
     default_general_goal: input.default_general_goal,
+    default_monthly_seller_goal: input.default_monthly_seller_goal,
     version: previous.version + 1,
     updated_by: actor.userId,
     updated_at: nowIso,
@@ -849,11 +852,13 @@ export async function updateManagerSettingsRecord(
       manager_name: previous.manager_name,
       manager_label: previous.manager_label,
       default_general_goal: previous.default_general_goal,
+      default_monthly_seller_goal: previous.default_monthly_seller_goal,
     },
     new_values: {
       manager_name: updated.manager_name,
       manager_label: updated.manager_label,
       default_general_goal: updated.default_general_goal,
+      default_monthly_seller_goal: updated.default_monthly_seller_goal,
     },
     created_at: nowIso,
   });

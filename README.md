@@ -40,6 +40,8 @@ Diseñado con una interfaz minimalista inspirada en Apple: fondo claro `#F5F5F7`
    - `supabase/migrations/0001_initial_schema.sql`
    - `supabase/migrations/20261027224406_hosted_security.sql`
    - `supabase/migrations/20261027230618_restrict_storage_listing_and_internal_function.sql`
+   - `supabase/migrations/20261028024623_daily_points_additive.sql`
+   - `supabase/migrations/20261029010000_shared_monthly_seller_goal.sql`
    - `supabase/seed_demo.sql` *(opcional: instala la función segura `public.initialize_demo_salesboard()`)*
 
 ### 3.2 Configurar la Autenticación (Sin registro público)
@@ -110,7 +112,7 @@ Antes de desplegar, configura estas variables en **Project configuration → Env
 - `NEXT_PUBLIC_TIMEZONE`: `America/Santo_Domingo`.
 - `NEXT_PUBLIC_ENABLE_DEMO_FALLBACK`: `false`.
 
-Aplica las tres migraciones antes de abrir el tablero. El archivo `supabase/seed_demo.sql` instala una función de datos de prueba que solo puede ejecutar un administrador autenticado; no carga datos automáticamente. El proyecto no necesita `SUPABASE_SERVICE_ROLE_KEY` para funcionar.
+Aplica las migraciones indicadas antes de abrir el tablero. El archivo `supabase/seed_demo.sql` instala una función de datos de prueba que solo puede ejecutar un administrador autenticado; no carga datos automáticamente. El proyecto no necesita `SUPABASE_SERVICE_ROLE_KEY` para funcionar.
 
 En Supabase configura la URL de Netlify en **Authentication → URL Configuration**, desactiva el registro público y crea/promueve el usuario administrador como se describe arriba. Después del despliegue verifica `/`, `/admin` y `/api/board`; la API debe indicar `dataSource: "supabase"`. Las APIs administrativas deben devolver `403` sin sesión.
 
@@ -155,7 +157,7 @@ Las pruebas de `src/lib/__tests__/seller-photos.test.ts` verifican permisos de s
 
 - **Registro diario → Sumar puntos** es la operación predeterminada: escribe únicamente los puntos nuevos para la fecha seleccionada. Si ya tiene 10 y aplicas 7, el día queda en 17. Los campos vuelven a cero tras confirmar el guardado. Cada solicitud tiene un identificador para que los reintentos no dupliquen puntos; si no se puede confirmar, la pantalla conserva la operación y permite reintentar.
 - **Corregir total del día** reemplaza el total de esa fecha y exige la versión vigente para evitar sobrescrituras. La auditoría conserva el antes y el después, incluidos ajustes negativos.
-- El tablero público abre en **Este mes**: suma las cantidades de cada día desde el primero del mes hasta hoy en Santo Domingo. Los filtros siguen disponibles fuera del modo TV. Las metas por período conservan su cálculo existente a partir de las metas diarias.
+- El tablero público abre en **Este mes**: suma las cantidades de cada día desde el primero del mes hasta hoy en Santo Domingo. Los filtros siguen disponibles fuera del modo TV. La meta mensual individual es compartida por todos los vendedores y se configura en **Manager General → Objetivo mensual para cada vendedor**; su valor inicial es 400 puntos. Se conserva también el primer día del mes y después de reiniciar un ciclo. Las consultas diarias mantienen sus metas diarias individuales.
 - **Reportes / Excel** permite seleccionar un rango de hasta 366 días, con ambos extremos incluidos. La vista y el `.xlsx` incluyen todos los vendedores, también inactivos u ocultos en TV. El archivo contiene **Resumen**, **Puntos por día**, **Detalle diario** y **Movimientos**; distingue celdas sin registro de ceros guardados y guarda los puntos y las fechas con tipos nativos de Excel.
 - Los totales diarios son la fuente del reporte. La hoja de movimientos se construye con la auditoría disponible y no inventa aplicaciones individuales para datos anteriores que carezcan de ese desglose. Las fechas de puntos y las fechas de aplicación se muestran separadas.
 - El guardado alojado requiere `supabase/migrations/20261028024623_daily_points_additive.sql`: instala `public.apply_daily_points`, con transacción, control de concurrencia y verificación de administrador. No modifica los registros existentes. En este proyecto las migraciones previas se aplicaron manualmente desde SQL Editor, sin tabla de historial de Supabase CLI; mantener el mismo procedimiento para instalaciones existentes.

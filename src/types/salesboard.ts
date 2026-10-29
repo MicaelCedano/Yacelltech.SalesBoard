@@ -18,6 +18,7 @@ export interface AppSettings {
   manager_label: string;
   manager_avatar_url: string | null;
   default_general_goal: number;
+  default_monthly_seller_goal?: number;
   timezone: string;
   is_demo_environment: boolean;
   version: number;
