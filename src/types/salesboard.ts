@@ -17,6 +17,7 @@ export interface AppSettings {
   manager_name: string;
   manager_label: string;
   manager_avatar_url: string | null;
+  /** Dato histórico; no interviene en las metas actuales. */
   default_general_goal: number;
   default_monthly_seller_goal?: number;
   timezone: string;
@@ -129,6 +130,7 @@ export interface ManagerSummaryStat {
 export interface SalesBoardSnapshot {
   settings: AppSettings;
   dateFilter: DateRangeFilter;
+  goalMonths?: number;
   manager: ManagerSummaryStat;
   rankedSellers: RankedSellerStat[];
   allSellersAdminTable: RankedSellerStat[];

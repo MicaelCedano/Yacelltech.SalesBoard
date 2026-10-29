@@ -6,7 +6,7 @@ import { ManagerSummaryStat } from "@/types/salesboard";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 
-export function ManagerCard({ manager, staticDisplay = false }: { manager: ManagerSummaryStat; staticDisplay?: boolean }) {
+export function ManagerCard({ manager, staticDisplay = false, goalMonths = 1 }: { manager: ManagerSummaryStat; staticDisplay?: boolean; goalMonths?: number }) {
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = staticDisplay || prefersReducedMotion;
   return (
@@ -21,7 +21,7 @@ export function ManagerCard({ manager, staticDisplay = false }: { manager: Manag
         <div className="progress-track" role="progressbar" aria-label="Cumplimiento de la meta general" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, manager.completionPercent)} aria-valuetext={`${manager.completionPercent}% · ${manager.totalUnitsSold} de ${manager.generalGoal} puntos`}>
           <motion.div initial={false} animate={{ width: `${manager.progressBarWidthPercent}%` }} transition={{ duration: reducedMotion ? 0 : 0.4 }} className="progress-fill" data-complete={manager.isGoalMet} />
         </div>
-        <div className="manager-progress-labels"><span>Meta {manager.generalGoal.toLocaleString("es-DO")} puntos</span>
+        <div className="manager-progress-labels"><span>{goalMonths > 1 ? `Meta de ${goalMonths} meses` : "Meta mensual"} {manager.generalGoal.toLocaleString("es-DO")} puntos</span>
           {manager.isGoalMet ? <span className="goal-complete"><Check size={16} aria-hidden="true" /> Meta completada</span> : <span>{manager.generalGoal === 0 ? "Sin meta configurada" : `Faltan ${manager.remainingUnits.toLocaleString("es-DO")} puntos`}</span>}
         </div>
       </div>

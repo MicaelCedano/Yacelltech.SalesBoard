@@ -14,7 +14,7 @@ import { enumerateDatesBetween } from "@/lib/date-utils";
 export interface DirectDailyUpdateItem {
   seller_id: string;
   units_sold: number;
-  individual_goal: number;
+  individual_goal?: number;
   expected_version?: number;
 }
 
@@ -70,7 +70,7 @@ export function applyDirectCumulativeDailySalesUpdate(params: {
     if (!Number.isInteger(item.units_sold) || item.units_sold < 0) {
       throw new Error(`La cantidad de puntos para el vendedor ${item.seller_id} debe ser un entero no negativo.`);
     }
-    if (!Number.isInteger(item.individual_goal) || item.individual_goal < 0) {
+    if (item.individual_goal !== undefined && (!Number.isInteger(item.individual_goal) || item.individual_goal < 0)) {
       throw new Error(`La meta individual para el vendedor ${item.seller_id} debe ser un entero no negativo.`);
     }
 
@@ -97,7 +97,7 @@ export function applyDirectCumulativeDailySalesUpdate(params: {
 
     // REEMPLAZO DIRECTO DEL TOTAL ACUMULADO DEL DÍA (12 -> 15 resulta en 15, nunca 27)
     const newUnits = item.units_sold;
-    const newGoal = item.individual_goal;
+    const newGoal = item.individual_goal ?? existing?.individual_goal_snapshot ?? 0;
 
     if (previousUnits !== newUnits || previousGoal !== newGoal || !existing) {
       auditDiffs.push({
@@ -134,7 +134,7 @@ export function applyDirectCumulativeDailySalesUpdate(params: {
     salesMap.set(key, nextRecord);
 
     // Actualizar también la meta predeterminada del vendedor si cambió
-    if (seller.individual_goal !== newGoal) {
+    if (item.individual_goal !== undefined && seller.individual_goal !== newGoal) {
       updatedSellersMap.set(seller.id, {
         ...seller,
         individual_goal: newGoal,
@@ -162,16 +162,15 @@ export function buildSalesBoardSnapshot(params: {
   dateFilter: DateRangeFilter;
   dataSource: "supabase" | "demo-local";
 }): SalesBoardSnapshot {
-  const { settings, sellers, dailySales, dailyGoals, dateFilter, dataSource } = params;
+  const { settings, sellers, dailySales, dateFilter, dataSource } = params;
 
   const datesInRange = enumerateDatesBetween(dateFilter.startDate, dateFilter.endDate);
   const numDays = Math.max(1, datesInRange.length);
   const monthCount = datesInRange.length > 1
     ? new Set(datesInRange.map((date) => date.slice(0, 7))).size
     : 1;
-  const monthlyGoalForRange = dateFilter.preset === "thisMonth" || (numDays > 1 && dateFilter.startDate.endsWith("-01"))
-    ? settings.default_monthly_seller_goal ?? null
-    : null;
+  // Todos los períodos se comparan con la meta mensual, sin prorrateo diario.
+  const monthlyGoalForRange = Math.max(0, settings.default_monthly_seller_goal ?? 400);
   const dateSet = new Set(datesInRange);
 
   // 1. Deduplicar registros diarios por (seller_id, sale_date) quedándose con el más reciente
@@ -236,28 +235,17 @@ export function buildSalesBoardSnapshot(params: {
     }
   }
 
-  // Calcular meta general para la fecha o período
-  const goalsByDate = new Map<string, number>();
-  for (const g of dailyGoals) {
-    goalsByDate.set(g.goal_date, Math.max(0, Math.floor(g.general_goal)));
-  }
-
-  let totalGeneralGoal = 0;
-  for (const d of datesInRange) {
-    const dayGoal = goalsByDate.get(d) ?? settings.default_general_goal;
-    totalGeneralGoal += Math.max(0, dayGoal);
-  }
+  const activeSellers = sellers.filter((s) => s.is_active);
+  const visibleBoardSellers = activeSellers.filter((s) => s.show_on_board);
+  const totalGeneralGoal = monthlyGoalForRange * activeSellers.length * monthCount;
 
   const managerCompletionPercent =
-    totalGeneralGoal > 0 ? Math.round((managerTotalUnits / totalGeneralGoal) * 100) : 0;
+    totalGeneralGoal > 0 ? Math.round((managerTotalUnits * 100) / totalGeneralGoal) : 0;
   const managerProgressBarWidthPercent =
     totalGeneralGoal > 0
       ? Math.min(100, Math.max(0, Number(((managerTotalUnits / totalGeneralGoal) * 100).toFixed(2))))
       : 0;
   const managerRemainingUnits = Math.max(0, totalGeneralGoal - managerTotalUnits);
-
-  const activeSellers = sellers.filter((s) => s.is_active);
-  const visibleBoardSellers = activeSellers.filter((s) => s.show_on_board);
 
   const managerSummary: ManagerSummaryStat = {
     managerName: settings.manager_name,
@@ -294,10 +282,12 @@ export function buildSalesBoardSnapshot(params: {
   return {
     settings: {
       ...settings,
+      default_monthly_seller_goal: monthlyGoalForRange,
       // Show the new default for existing boards while preserving custom titles.
       board_title: settings.board_title === "Ranking de ventas" ? "Ranking de puntos" : settings.board_title,
     },
     dateFilter,
+    goalMonths: monthCount,
     manager: managerSummary,
     rankedSellers,
     allSellersAdminTable,
@@ -362,14 +352,10 @@ export function computeRankedSellerStats(
   return sorted.map((seller, index) => {
     const agg = salesBySeller.get(seller.id);
     const unitsSold = agg?.totalUnits ?? 0;
-    const effectiveGoal = monthlyGoal !== null
-      ? Math.max(0, monthlyGoal * monthCount)
-      : numDays === 1
-        ? Math.max(0, agg?.singleDayGoalSnapshot ?? seller.individual_goal)
-        : Math.max(0, seller.individual_goal * numDays);
+    const effectiveGoal = Math.max(0, (monthlyGoal ?? 400) * monthCount);
 
     const goalCompletionPercent =
-      effectiveGoal > 0 ? Math.round((unitsSold / effectiveGoal) * 100) : 0;
+      effectiveGoal > 0 ? Math.round((unitsSold * 100) / effectiveGoal) : 0;
     const isGoalCompleted = effectiveGoal > 0 && unitsSold >= effectiveGoal;
     const remainingForIndividualGoal = Math.max(0, effectiveGoal - unitsSold);
 
@@ -418,7 +404,7 @@ export function computeRankedSellerStats(
       medal,
       isTied,
       lastUpdatedAt: agg?.latestUpdatedAt ?? null,
-      recordVersion: agg?.latestVersion ?? 1,
+      recordVersion: agg?.latestVersion ?? 0,
     };
   });
 }

@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       {
         settings: snapshot.settings,
         dateFilter: snapshot.dateFilter,
+        goalMonths: snapshot.goalMonths,
         manager: snapshot.manager,
         rankedSellers: snapshot.rankedSellers,
         allSellersAdminTable: snapshot.allSellersAdminTable,

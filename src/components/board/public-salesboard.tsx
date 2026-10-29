@@ -60,8 +60,8 @@ export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBo
         </div>
       </header>
       {preset === "custom" && !isTvMode && <div className="custom-range"><label>Desde <input type="date" aria-label="Fecha inicial" value={customStart} max={customEnd} onChange={(event) => { if (event.target.value) setCustomStart(event.target.value); }} /></label><label>Hasta <input type="date" aria-label="Fecha final" value={customEnd} min={customStart} onChange={(event) => { if (event.target.value) setCustomEnd(event.target.value); }} /></label></div>}
-      <ManagerCard manager={snapshot.manager} staticDisplay={isTvMode} />
-      <VerticalSellersChart sellers={snapshot.rankedSellers} staticDisplay={isTvMode} title={preset === "today" ? boardTitle : `${boardTitle} · ${snapshot.dateFilter.label}`} />
+      <ManagerCard goalMonths={snapshot.goalMonths} manager={snapshot.manager} staticDisplay={isTvMode} />
+      <VerticalSellersChart goalMonths={snapshot.goalMonths} sellers={snapshot.rankedSellers} staticDisplay={isTvMode} title={preset === "today" ? boardTitle : `${boardTitle} · ${snapshot.dateFilter.label}`} />
     </main>
   );
 }

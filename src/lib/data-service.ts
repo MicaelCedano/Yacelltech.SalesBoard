@@ -2,7 +2,6 @@ import crypto from "crypto";
 import {
   AppSettings,
   AuditLogEntry,
-  DailyGoalRecord,
   DailySaleRecord,
   DateFilterPreset,
   SalesBoardSnapshot,
@@ -82,7 +81,7 @@ export async function fetchSalesBoardSnapshot(params?: {
       }
     }
 
-    const [settingsRes, sellersRes, salesRes, goalsRes] = await Promise.all([
+    const [settingsRes, sellersRes, salesRes] = await Promise.all([
       supabase.from("app_settings").select("*").eq("id", 1).single(),
       supabase
         .from("sellers")
@@ -94,14 +93,9 @@ export async function fetchSalesBoardSnapshot(params?: {
         .select("*")
         .gte("sale_date", queryStartDate)
         .lte("sale_date", dateFilter.endDate),
-      supabase
-        .from("daily_goals")
-        .select("*")
-        .gte("goal_date", queryStartDate)
-        .lte("goal_date", dateFilter.endDate),
     ]);
 
-    for (const result of [settingsRes, sellersRes, salesRes, goalsRes]) {
+    for (const result of [settingsRes, sellersRes, salesRes]) {
       if (result.error) throw new Error(`No se pudo cargar el tablero: ${result.error.message}`);
     }
 
@@ -122,15 +116,12 @@ export async function fetchSalesBoardSnapshot(params?: {
 
     const sellers = (sellersRes.data as Seller[] | null) ?? [];
     const dailySales = (salesRes.data as DailySaleRecord[] | null) ?? [];
-    const dailyGoals = ((goalsRes.data as DailyGoalRecord[] | null) ?? []).filter(
-      (g) => g.goal_date !== CYCLE_START_MARKER_GOAL_DATE
-    );
 
     return buildSalesBoardSnapshot({
       settings,
       sellers,
       dailySales,
-      dailyGoals,
+      dailyGoals: [],
       dateFilter,
       dataSource: "supabase",
     });
@@ -156,7 +147,7 @@ export async function fetchSalesBoardSnapshot(params?: {
     settings: demoDb.settings,
     sellers: demoDb.sellers,
     dailySales: demoDb.dailySales,
-    dailyGoals: demoDb.dailyGoals.filter((g) => g.goal_date !== CYCLE_START_MARKER_GOAL_DATE),
+    dailyGoals: [],
     dateFilter,
     dataSource: "demo-local",
   });
@@ -171,89 +162,15 @@ export async function saveBatchDailySales(
 ): Promise<{ snapshot: SalesBoardSnapshot; updatedCount: number }> {
   const nowIso = new Date().toISOString();
   const requestId = input.request_id ?? crypto.randomUUID();
-  const operation = { sale_date: input.sale_date, general_goal: input.general_goal, mode: input.mode, entries: input.entries };
+  const operation = { sale_date: input.sale_date, general_goal: input.general_goal ?? 0, mode: input.mode, entries: input.entries };
   const supabase = await getSupabaseServerClient();
 
   if (supabase) {
     const { data, error } = await supabase.rpc("apply_daily_points", {
       p_request_id: requestId, p_sale_date: input.sale_date,
-      p_general_goal: input.general_goal, p_entries: input.entries, p_mode: input.mode,
+      p_general_goal: input.general_goal ?? 0, p_entries: input.entries, p_mode: input.mode,
     });
-    if (error) {
-      if (error.message.includes("apply_daily_points") || error.code === "PGRST202") {
-        // Fallback directo si la función RPC aún no ha sido ejecutada manualmente en SQL Editor
-        const [sellersRes, salesRes, goalRes] = await Promise.all([
-          supabase.from("sellers").select("*"),
-          supabase.from("daily_sales").select("*").eq("sale_date", input.sale_date),
-          supabase.from("daily_goals").select("*").eq("goal_date", input.sale_date).maybeSingle(),
-        ]);
-        if (sellersRes.error) throw new Error(sellersRes.error.message);
-        if (salesRes.error) throw new Error(salesRes.error.message);
-        const existingSales = (salesRes.data as DailySaleRecord[] | null) ?? [];
-        const sellers = (sellersRes.data as Seller[] | null) ?? [];
-        const { updatedSales, auditDiffs } = applyDirectCumulativeDailySalesUpdate({
-          saleDate: input.sale_date,
-          existingSales,
-          sellers,
-          updates: input.mode === "add" ? input.entries.map((entry) => {
-            const prev = existingSales.find((s) => s.seller_id === entry.seller_id && s.sale_date === input.sale_date);
-            const total = (prev?.units_sold ?? 0) + entry.units_sold;
-            if (total > 100000) throw new Error("El total diario no puede exceder 100000 puntos");
-            return { ...entry, units_sold: total, expected_version: undefined };
-          }) : input.entries,
-          actorId: actor.userId,
-          nowIso,
-        });
-        for (const record of updatedSales) {
-          if (record.sale_date !== input.sale_date) continue;
-          const { error: upsertErr } = await supabase.from("daily_sales").upsert({
-            seller_id: record.seller_id,
-            sale_date: record.sale_date,
-            units_sold: record.units_sold,
-            individual_goal_snapshot: record.individual_goal_snapshot,
-            version: record.version,
-            updated_by: actor.userId,
-            updated_at: nowIso,
-          }, { onConflict: "seller_id,sale_date" });
-          if (upsertErr) throw new Error(upsertErr.message);
-        }
-        await supabase.from("daily_goals").upsert({
-          goal_date: input.sale_date,
-          general_goal: input.general_goal,
-          updated_by: actor.userId,
-          updated_at: nowIso,
-        }, { onConflict: "goal_date" });
-        await supabase.from("audit_logs").insert({
-          id: requestId,
-          actor_id: actor.userId,
-          actor_email: actor.email,
-          action_type: "BATCH_DAILY_SALES_UPDATE",
-          entity_type: "daily_sales",
-          entity_id: input.sale_date,
-          sale_date: input.sale_date,
-          previous_values: {
-            general_goal: goalRes.data?.general_goal ?? 50,
-            sellers: auditDiffs.map((d) => ({
-              seller_id: d.seller_id, seller_name: d.seller_name,
-              units_sold: d.previous_units, individual_goal: d.previous_goal,
-            })),
-          },
-          new_values: {
-            general_goal: input.general_goal,
-            request: operation,
-            sellers: auditDiffs.map((d) => ({
-              seller_id: d.seller_id, seller_name: d.seller_name,
-              units_sold: d.new_units, individual_goal: d.new_goal,
-            })),
-          },
-        });
-        const snapshot = await fetchSalesBoardSnapshot({
-          preset: "custom", customStart: input.sale_date, customEnd: input.sale_date,
-        });
-        return { snapshot, updatedCount: auditDiffs.length };
-      }
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
     const snapshot = await fetchSalesBoardSnapshot({
       preset: "custom", customStart: input.sale_date, customEnd: input.sale_date,
     });
@@ -268,46 +185,23 @@ export async function saveBatchDailySales(
     }
     return { snapshot: await fetchSalesBoardSnapshot({ preset: "custom", customStart: input.sale_date, customEnd: input.sale_date }), updatedCount: 0 };
   }
-  const existingGoal = demoDb.dailyGoals.find((g) => g.goal_date === input.sale_date);
-  const previousGeneralGoal =
-    existingGoal?.general_goal ?? demoDb.settings.default_general_goal;
-
   const { updatedSales, updatedSellers, auditDiffs } =
     applyDirectCumulativeDailySalesUpdate({
       saleDate: input.sale_date,
       existingSales: demoDb.dailySales,
       sellers: demoDb.sellers,
-      updates: input.mode === "add" ? input.entries.map((entry) => {
+      updates: input.entries.map((entry) => {
         const previous = demoDb.dailySales.find((sale) => sale.seller_id === entry.seller_id && sale.sale_date === input.sale_date);
-        const total = (previous?.units_sold ?? 0) + entry.units_sold;
+        const total = input.mode === "add" ? (previous?.units_sold ?? 0) + entry.units_sold : entry.units_sold;
         if (total > 100000) throw new Error("El total diario no puede exceder 100000 puntos");
-        return { ...entry, units_sold: total, expected_version: undefined };
-      }) : input.entries,
+        return { seller_id: entry.seller_id, units_sold: total, expected_version: input.mode === "add" ? undefined : entry.expected_version };
+      }),
       actorId: actor.userId,
       nowIso,
     });
 
   demoDb.dailySales = updatedSales;
   demoDb.sellers = updatedSellers;
-
-  const goalIndex = demoDb.dailyGoals.findIndex((g) => g.goal_date === input.sale_date);
-  if (goalIndex >= 0) {
-    demoDb.dailyGoals[goalIndex] = {
-      ...demoDb.dailyGoals[goalIndex]!,
-      general_goal: input.general_goal,
-      updated_by: actor.userId,
-      updated_at: nowIso,
-    };
-  } else {
-    demoDb.dailyGoals.push({
-      id: `goal-${input.sale_date}`,
-      goal_date: input.sale_date,
-      general_goal: input.general_goal,
-      updated_by: actor.userId,
-      created_at: nowIso,
-      updated_at: nowIso,
-    });
-  }
 
   demoDb.settings.updated_at = nowIso;
 
@@ -320,20 +214,16 @@ export async function saveBatchDailySales(
     entity_id: input.sale_date,
     sale_date: input.sale_date,
     previous_values: {
-      general_goal: previousGeneralGoal,
       sellers: auditDiffs.map((d) => ({
         seller_id: d.seller_id, seller_name: d.seller_name,
         units_sold: d.previous_units,
-        individual_goal: d.previous_goal,
       })),
     },
     new_values: {
-      general_goal: input.general_goal,
       request: operation,
       sellers: auditDiffs.map((d) => ({
         seller_id: d.seller_id, seller_name: d.seller_name,
         units_sold: d.new_units,
-        individual_goal: d.new_goal,
       })),
     },
     created_at: nowIso,
@@ -551,7 +441,7 @@ export async function createSellerRecord(
         full_name: input.full_name,
         avatar_url: input.avatar_url ?? null,
         bar_color: input.bar_color,
-        individual_goal: input.individual_goal,
+        individual_goal: 0,
         is_active: input.is_active,
         show_on_board: input.show_on_board,
         display_order: input.display_order,
@@ -583,7 +473,7 @@ export async function createSellerRecord(
     full_name: input.full_name,
     avatar_url: input.avatar_url ?? null,
     bar_color: input.bar_color,
-    individual_goal: input.individual_goal,
+    individual_goal: 0,
     is_active: input.is_active,
     show_on_board: input.show_on_board,
     display_order:
@@ -641,8 +531,6 @@ export async function updateSellerRecord(
     if (input.full_name !== undefined) updatePayload.full_name = input.full_name;
     if (input.avatar_url !== undefined) updatePayload.avatar_url = input.avatar_url;
     if (input.bar_color !== undefined) updatePayload.bar_color = input.bar_color;
-    if (input.individual_goal !== undefined)
-      updatePayload.individual_goal = input.individual_goal;
     if (input.is_active !== undefined) updatePayload.is_active = input.is_active;
     if (input.show_on_board !== undefined)
       updatePayload.show_on_board = input.show_on_board;
@@ -688,7 +576,6 @@ export async function updateSellerRecord(
     avatar_url:
       input.avatar_url !== undefined ? input.avatar_url : previous.avatar_url,
     bar_color: input.bar_color ?? previous.bar_color,
-    individual_goal: input.individual_goal ?? previous.individual_goal,
     is_active: input.is_active ?? previous.is_active,
     show_on_board: input.show_on_board ?? previous.show_on_board,
     display_order: input.display_order ?? previous.display_order,
@@ -771,7 +658,6 @@ export async function updateManagerSettingsRecord(
           input.manager_avatar_url !== undefined
             ? input.manager_avatar_url
             : (currentSettings as AppSettings | null)?.manager_avatar_url ?? null,
-        default_general_goal: input.default_general_goal,
         default_monthly_seller_goal: input.default_monthly_seller_goal,
         version: nextVersion,
         updated_by: actor.userId,
@@ -786,18 +672,6 @@ export async function updateManagerSettingsRecord(
         `Error al actualizar Manager General: ${error?.message ?? "Error desconocido"}`
       );
     }
-
-    // También actualizar la meta del día actual si existe registro para hoy
-    const today = getSantoDomingoToday();
-    await supabase.from("daily_goals").upsert(
-      {
-        goal_date: today,
-        general_goal: input.default_general_goal,
-        updated_by: actor.userId,
-        updated_at: nowIso,
-      },
-      { onConflict: "goal_date" }
-    );
 
     await supabase.from("audit_logs").insert({
       actor_id: actor.userId,
@@ -824,7 +698,6 @@ export async function updateManagerSettingsRecord(
       input.manager_avatar_url !== undefined
         ? input.manager_avatar_url
         : previous.manager_avatar_url,
-    default_general_goal: input.default_general_goal,
     default_monthly_seller_goal: input.default_monthly_seller_goal,
     version: previous.version + 1,
     updated_by: actor.userId,
@@ -832,13 +705,6 @@ export async function updateManagerSettingsRecord(
   };
 
   demoDb.settings = updated;
-
-  const today = getSantoDomingoToday();
-  const todayGoalIdx = demoDb.dailyGoals.findIndex((g) => g.goal_date === today);
-  if (todayGoalIdx >= 0) {
-    demoDb.dailyGoals[todayGoalIdx]!.general_goal = input.default_general_goal;
-    demoDb.dailyGoals[todayGoalIdx]!.updated_at = nowIso;
-  }
 
   demoDb.auditLogs.unshift({
     id: crypto.randomUUID(),

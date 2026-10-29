@@ -41,6 +41,7 @@ beforeAll(async () => {
   await db.exec(`create policy admin_read on public.audit_logs for select to authenticated using (public.is_admin());
     create policy admin_insert on public.audit_logs for insert to authenticated with check (public.is_admin());`);
   await db.exec(readFileSync("supabase/migrations/20261028024623_daily_points_additive.sql", "utf8"));
+  await db.exec(readFileSync("supabase/migrations/20261029223345_monthly_goals_only.sql", "utf8"));
 }, 30000);
 beforeEach(async () => {
   await db.exec(`reset role; truncate public.audit_logs, public.daily_sales, public.daily_goals, public.sellers;
@@ -50,6 +51,18 @@ beforeEach(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("Guardado atómico en PostgreSQL", () => {
+  it("acepta puntos sin metas diarias y conserva las metas históricas ante clientes anteriores", async () => {
+    await db.exec(`insert into public.daily_goals(goal_date,general_goal) values ('2026-10-27',75);
+      update public.sellers set individual_goal=13 where id='${SELLER}';`);
+    await apply(3, { entries: [{ seller_id: SELLER, units_sold: 3 }] });
+    expect((await db.query<{ individual_goal_snapshot: number }>("select individual_goal_snapshot from public.daily_sales")).rows[0]!.individual_goal_snapshot).toBe(0);
+    await db.exec("update public.daily_sales set individual_goal_snapshot=17");
+    await apply(4); // El cliente anterior todavía envía individual_goal=20 y p_general_goal=100.
+    expect(await total()).toBe(7);
+    expect((await db.query<{ individual_goal_snapshot: number }>("select individual_goal_snapshot from public.daily_sales")).rows[0]!.individual_goal_snapshot).toBe(17);
+    expect((await db.query<{ individual_goal: number }>("select individual_goal from public.sellers")).rows[0]!.individual_goal).toBe(13);
+    expect((await db.query<{ general_goal: number }>("select general_goal from public.daily_goals")).rows).toEqual([{ general_goal: 75 }]);
+  });
   it("suma aplicaciones y conserva cada fecha para el acumulado mensual", async () => {
     await apply(10); await apply(7); await apply(5, { date: "2026-10-28" });
     expect(await total()).toBe(22);

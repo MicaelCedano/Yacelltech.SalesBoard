@@ -43,7 +43,6 @@ interface EditableDailyRow {
   show_on_board: boolean;
   units_sold: number;
   points_to_add: number;
-  individual_goal: number;
   expected_version: number;
 }
 
@@ -62,9 +61,6 @@ export function AdminDashboard({
 
   // Estado editable de la tabla diaria (Sección 7.1)
   const [rows, setRows] = useState<EditableDailyRow[]>([]);
-  const [dailyGeneralGoal, setDailyGeneralGoal] = useState<number>(
-    initialSnapshot.manager.generalGoal
-  );
   const [isLoadingDate, setIsLoadingDate] = useState(false);
   const [isSavingDaily, setIsSavingDaily] = useState(false);
   const [isClosingMonth, setIsClosingMonth] = useState(false);
@@ -75,7 +71,7 @@ export function AdminDashboard({
   const [dailyRetryPending, setDailyRetryPending] = useState(false);
   const dailySaveRef = useRef(false);
   const dailyLoadRef = useRef(0);
-  const dailyRequestRef = useRef<{ request_id: string; mode: "add" | "set"; sale_date: string; general_goal: number; entries: { seller_id: string; units_sold: number; individual_goal: number; expected_version: number }[] } | null>(null);
+  const dailyRequestRef = useRef<{ request_id: string; mode: "add" | "set"; sale_date: string; entries: { seller_id: string; units_sold: number; expected_version: number }[] } | null>(null);
 
   // Filtro de consulta histórica (Sección 8)
   const [historyPreset, setHistoryPreset] = useState<DateFilterPreset>("today");
@@ -91,7 +87,6 @@ export function AdminDashboard({
   const [editingSellerId, setEditingSellerId] = useState<string | null>(null);
   const [sellerName, setSellerName] = useState("");
   const [sellerAvatarUrl, setSellerAvatarUrl] = useState("");
-  const [sellerGoal, setSellerGoal] = useState(15);
   const [sellerOrder, setSellerOrder] = useState(1);
   const [sellerActive, setSellerActive] = useState(true);
   const [sellerShowOnBoard, setSellerShowOnBoard] = useState(true);
@@ -107,9 +102,6 @@ export function AdminDashboard({
   );
   const [managerAvatarUrl, setManagerAvatarUrl] = useState(
     initialSnapshot.settings.manager_avatar_url ?? ""
-  );
-  const [defaultGeneralGoal, setDefaultGeneralGoal] = useState(
-    initialSnapshot.settings.default_general_goal
   );
   const [defaultMonthlySellerGoal, setDefaultMonthlySellerGoal] = useState(
     initialSnapshot.settings.default_monthly_seller_goal ?? 400
@@ -164,11 +156,9 @@ export function AdminDashboard({
         show_on_board: item.seller.show_on_board,
         units_sold: item.unitsSold,
         points_to_add: 0,
-        individual_goal: item.effectiveGoal,
         expected_version: item.recordVersion,
       }))
     );
-    setDailyGeneralGoal(snap.manager.generalGoal);
   }, []);
 
   const loadMonthSnapshot = useCallback(async () => {
@@ -263,10 +253,10 @@ export function AdminDashboard({
     return rows.reduce((sum, r) => sum + (Number.isFinite(r.units_sold) ? r.units_sold : 0) + (dailyMode === "add" && Number.isFinite(r.points_to_add) ? r.points_to_add : 0), 0);
   }, [rows, dailyMode]);
 
-  const liveManagerPercent = useMemo(() => {
-    if (dailyGeneralGoal <= 0) return 0;
-    return Math.round((liveManagerTotal / dailyGeneralGoal) * 100);
-  }, [liveManagerTotal, dailyGeneralGoal]);
+  const monthlySellerGoal = snapshot.settings.default_monthly_seller_goal ?? 400;
+  const draftAppliesToMonth = selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate;
+  const storedDailyTotal = snapshot.manager.totalUnitsSold;
+  const liveMonthlyTotal = monthSnapshot.manager.totalUnitsSold + (draftAppliesToMonth ? liveManagerTotal - storedDailyTotal : 0);
 
   const monthUnitsBySeller = useMemo(() => {
     const map = new Map<string, number>();
@@ -286,16 +276,14 @@ export function AdminDashboard({
         request_id: crypto.randomUUID(),
         mode: dailyMode,
         sale_date: selectedDate,
-        general_goal: dailyGeneralGoal,
         entries: rows.map((r) => ({
           seller_id: r.seller_id,
           units_sold: dailyMode === "add" ? r.points_to_add : r.units_sold,
-          individual_goal: r.individual_goal,
           expected_version: r.expected_version,
         })),
       };
-      if (![payload.general_goal, ...payload.entries.flatMap((entry) => [entry.units_sold, entry.individual_goal])].every((value) => Number.isInteger(value) && value >= 0 && value <= 100000)) {
-        throw new Error("Introduce puntos y metas enteros entre 0 y 100000.");
+      if (!payload.entries.every((entry) => Number.isInteger(entry.units_sold) && entry.units_sold >= 0 && entry.units_sold <= 100000)) {
+        throw new Error("Introduce puntos enteros entre 0 y 100000.");
       }
       dailyRequestRef.current = payload;
 
@@ -428,7 +416,6 @@ export function AdminDashboard({
     setEditingSellerId(seller.id);
     setSellerName(seller.full_name);
     setSellerAvatarUrl(seller.avatar_url ?? "");
-    setSellerGoal(seller.individual_goal);
     setSellerOrder(seller.display_order);
     setSellerActive(seller.is_active);
     setSellerShowOnBoard(seller.show_on_board);
@@ -440,7 +427,6 @@ export function AdminDashboard({
     setEditingSellerId(null);
     setSellerName("");
     setSellerAvatarUrl("");
-    setSellerGoal(15);
     setSellerOrder(rows.length + 1);
     setSellerActive(true);
     setSellerShowOnBoard(true);
@@ -459,7 +445,6 @@ export function AdminDashboard({
           ...(isEditing ? { id: editingSellerId } : { bar_color: "#007AFF" }),
           full_name: sellerName.trim(),
           avatar_url: sellerAvatarUrl.trim() ? sellerAvatarUrl.trim() : null,
-          individual_goal: Math.max(0, Math.floor(Number(sellerGoal) || 0)),
           display_order: Math.max(0, Math.floor(Number(sellerOrder) || 0)),
           is_active: sellerActive,
           show_on_board: sellerShowOnBoard,
@@ -539,10 +524,6 @@ export function AdminDashboard({
           manager_avatar_url: managerAvatarUrl.trim()
             ? managerAvatarUrl.trim()
             : null,
-          default_general_goal: Math.max(
-            0,
-            Math.floor(Number(defaultGeneralGoal) || 0)
-          ),
           default_monthly_seller_goal: Math.max(
             0,
             Math.floor(Number(defaultMonthlySellerGoal) || 0)
@@ -723,7 +704,7 @@ export function AdminDashboard({
             <section className="admin-summary" aria-label="Resumen diario de la tienda">
               <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p><p className="text-xs text-secondary mt-1">Acumulado mes en pantalla: <strong>{monthSnapshot.manager.totalUnitsSold.toLocaleString("es-DO")} pts</strong></p></div>
               <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados ({selectedDate === todaySantoDomingo ? "Hoy" : formatShortDateEs(selectedDate)})</p></div>
-              <div><label htmlFor="daily-general-goal-input" className="admin-summary-label block">Meta general</label><Input id="daily-general-goal-input" disabled={dailyRetryPending} type="number" min={0} step={1} value={dailyGeneralGoal} onChange={(event) => setDailyGeneralGoal(Number(event.target.value || "0"))} /></div>
+              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p><p className="text-xs text-secondary mt-2">Meta mensual del equipo: {monthSnapshot.manager.generalGoal.toLocaleString("es-DO")} puntos</p></div>
             </section>
 
             {/* Tabla Editable de Registro Diario (Sección 7.1) */}
@@ -767,23 +748,11 @@ export function AdminDashboard({
                       <th className="py-3.5 px-4 text-right w-48">
                         {dailyMode === "add" ? "Puntos a sumar" : "Total del día"}
                       </th>
-                      <th className="py-3.5 px-4 text-right w-40">Meta diaria</th>
-                      <th className="py-3.5 px-4 text-center">Progreso</th>
                       <th className="py-3.5 px-4 text-center">En TV</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-separator text-sm">
                     {rows.map((row, index) => {
-                      const pct =
-                        row.individual_goal > 0
-                          ? Math.round(
-                              ((row.units_sold + (dailyMode === "add" ? row.points_to_add : 0)) / row.individual_goal) * 100
-                            )
-                          : 0;
-                      const isMet =
-                        row.individual_goal > 0 &&
-                        row.units_sold + (dailyMode === "add" ? row.points_to_add : 0) >= row.individual_goal;
-
                       return (
                         <tr
                           key={row.seller_id}
@@ -840,50 +809,6 @@ export function AdminDashboard({
                             {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Hoy: {row.units_sold} · Quedará hoy: {row.units_sold + row.points_to_add} · Mes en TV: {(monthUnitsBySeller.get(row.seller_id) ?? 0) + (selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate ? row.points_to_add : 0)}</p>}
                           </td>
 
-                          {/* Meta diaria individual */}
-                          <td className="py-3.5 px-4 text-right">
-                            <Input
-                              type="number"
-                              min={0}
-                              step={1}
-                              aria-label={`Meta diaria individual de ${row.full_name}`}
-                              disabled={dailyRetryPending}
-                              value={row.individual_goal}
-                              onChange={(e) => {
-                                const val = Math.max(
-                                  0,
-                                  parseInt(e.target.value || "0", 10)
-                                );
-                                setRows((prev) =>
-                                  prev.map((item, i) =>
-                                    i === index
-                                      ? {
-                                          ...item,
-                                          individual_goal: Number.isNaN(val)
-                                            ? 0
-                                            : val,
-                                        }
-                                      : item
-                                  )
-                                );
-                              }}
-                              className="ml-auto w-24 sm:w-28 text-right font-display text-base font-medium tabular-nums text-foreground"
-                            />
-                          </td>
-
-                          <td className="py-3.5 px-4 text-center">
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium tabular-nums",
-                                isMet
-                                  ? "bg-accent-soft text-success-text border border-separator"
-                                  : "bg-muted text-secondary"
-                              )}
-                            >
-                              {pct}%
-                            </span>
-                          </td>
-
                           <td className="py-3.5 px-4 text-center">
                             {row.show_on_board && row.is_active ? (
                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-success-text">
@@ -908,8 +833,7 @@ export function AdminDashboard({
                   <strong className="text-foreground font-medium">
                     {liveManagerTotal} puntos
                   </strong>{" "}
-                  de <strong className="text-foreground">{dailyGeneralGoal}</strong> (
-                  {liveManagerPercent}%)
+                  · Acumulado del mes en TV: <strong className="text-foreground">{liveMonthlyTotal.toLocaleString("es-DO")} puntos</strong>
                 </div>
 
 
@@ -1073,24 +997,7 @@ export function AdminDashboard({
                   />
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-secondary">
-                        Meta individual diaria
-                      </label>
-                      <Input
-                        aria-label="Meta individual diaria"
-                        type="number"
-                        min={0}
-                        step={1}
-                        required
-                        value={sellerGoal}
-                        onChange={(e) =>
-                          setSellerGoal(
-                            Math.max(0, parseInt(e.target.value || "0", 10))
-                          )
-                        }
-                      />
-                    </div>
+                    <div><p className="mb-1 text-xs font-semibold text-secondary">Meta mensual compartida</p><p className="py-2 text-sm font-semibold">{monthlySellerGoal} puntos/mes</p></div>
 
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-secondary">
@@ -1162,7 +1069,7 @@ export function AdminDashboard({
                 Vendedores registrados ({snapshot.allSellersAdminTable.length})
               </h2>
               <p className="text-xs text-secondary mb-4">
-                Pulsa «Editar datos y foto» para cambiar el nombre, la fotografía o la meta. Puedes desactivarlos sin perder sus ventas anteriores.
+                Pulsa «Editar datos y foto» para cambiar el nombre o la fotografía. La meta mensual es la misma para todos. Puedes desactivarlos sin perder sus puntos anteriores.
               </p>
 
               <div className="space-y-3">
@@ -1194,9 +1101,9 @@ export function AdminDashboard({
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-secondary">
                           <span>
-                            Meta diaria individual:{" "}
+                            Meta mensual compartida:{" "}
                             <strong className="text-foreground">
-                              {seller.individual_goal} puntos/día
+                              {monthlySellerGoal} puntos/mes
                             </strong>
                           </span>
                           <span>•</span>
@@ -1320,25 +1227,7 @@ export function AdminDashboard({
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-secondary">
-                    Meta General Diaria Predeterminada (Puntos) *
-                  </label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={1}
-                    required
-                    id="manager-goal"
-                    aria-label="Meta general predeterminada"
-                    value={defaultGeneralGoal}
-                    onChange={(e) =>
-                      setDefaultGeneralGoal(
-                        Math.max(0, parseInt(e.target.value || "0", 10))
-                      )
-                    }
-                  />
-                </div>
+
 
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-secondary">
@@ -1354,7 +1243,8 @@ export function AdminDashboard({
                     value={defaultMonthlySellerGoal}
                     onChange={(e) => setDefaultMonthlySellerGoal(Math.max(0, parseInt(e.target.value || "0", 10)))}
                   />
-                  <p className="mt-1 text-xs text-secondary">Este mismo objetivo se aplica a todos los vendedores en las vistas mensuales.</p>
+                  <p className="mt-1 text-xs text-secondary">Este mismo objetivo se aplica a todos los vendedores. Los puntos se registran por fecha y se acumulan durante el mes.</p>
+                  <p className="mt-2 text-sm text-foreground">Meta mensual del equipo: <strong>{(defaultMonthlySellerGoal * snapshot.allSellersAdminTable.filter((item) => item.seller.is_active).length).toLocaleString("es-DO")} puntos</strong> · {snapshot.allSellersAdminTable.filter((item) => item.seller.is_active).length} vendedores activos.</p>
                 </div>
 
                 <div>

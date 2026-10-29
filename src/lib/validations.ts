@@ -25,7 +25,8 @@ export const nonNegativeIntSchema = z
 export const dailySaleItemInputSchema = z.object({
   seller_id: z.string().uuid("ID de vendedor inválido"),
   units_sold: nonNegativeIntSchema,
-  individual_goal: nonNegativeIntSchema,
+  // Compatibilidad con clientes anteriores; las metas antiguas no se aplican.
+  individual_goal: nonNegativeIntSchema.optional(),
   expected_version: z.number().int().min(0).optional(),
 });
 
@@ -33,7 +34,7 @@ export const batchSaveDailySalesSchema = z.object({
   request_id: z.string().uuid().optional(),
   mode: z.enum(["add", "set"]).default("set"),
   sale_date: dateStringSchema,
-  general_goal: nonNegativeIntSchema,
+  general_goal: nonNegativeIntSchema.optional(),
   entries: z
     .array(dailySaleItemInputSchema)
     .min(1, "Debe incluir al menos un vendedor para guardar")
@@ -55,7 +56,7 @@ export const createSellerSchema = z.object({
     .max(60, "El nombre no puede exceder 60 caracteres"),
   avatar_url: z.string().url("URL de fotografía inválida").nullable().optional(),
   bar_color: hexColorSchema,
-  individual_goal: nonNegativeIntSchema,
+  individual_goal: nonNegativeIntSchema.optional(),
   is_active: z.boolean().default(true),
   show_on_board: z.boolean().default(true),
   display_order: z.number().int().min(0).max(999).default(0),
@@ -94,7 +95,7 @@ export const updateManagerSettingsSchema = z.object({
     .max(40, "Máximo 40 caracteres")
     .default("MANAGER GENERAL"),
   manager_avatar_url: z.string().url("URL de fotografía inválida").nullable().optional(),
-  default_general_goal: nonNegativeIntSchema,
+  default_general_goal: nonNegativeIntSchema.optional(),
   default_monthly_seller_goal: nonNegativeIntSchema,
   expected_version: z.number().int().min(1).optional(),
 });

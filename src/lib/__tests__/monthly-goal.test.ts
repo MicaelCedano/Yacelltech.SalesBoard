@@ -32,14 +32,24 @@ describe("Meta mensual compartida", () => {
     expect(snapshot(filter).allSellersAdminTable.every((seller) => seller.effectiveGoal === 400)).toBe(true);
   });
 
-  it("conserva la meta diaria al consultar un solo día, incluido el primero del mes", () => {
+  it("usa solo la meta mensual también al consultar un día, incluido el primero del mes", () => {
     const board = snapshot(resolveDateRangeFilter("today", "2026-11-01"));
-    expect(board.allSellersAdminTable.find((seller) => seller.unitsSold === 100)?.effectiveGoal).toBe(100);
-    expect(board.allSellersAdminTable.filter((seller) => seller.unitsSold === 0).every((seller) => seller.effectiveGoal === 20)).toBe(true);
+    expect(board.allSellersAdminTable.every((seller) => seller.effectiveGoal === 400)).toBe(true);
+    expect(board.manager.generalGoal).toBe(board.allSellersAdminTable.filter((item) => item.seller.is_active).length * 400);
   });
 
   it("acumula una meta por mes cuando el rango incluye dos meses desde el día primero", () => {
     const filter = resolveDateRangeFilter("custom", "2026-11-02", "2026-10-01", "2026-11-02");
     expect(snapshot(filter).allSellersAdminTable.every((seller) => seller.effectiveGoal === 800)).toBe(true);
+  });
+
+  it("calcula la meta del Manager con vendedores activos, incluidos ocultos, sin contar inactivos", () => {
+    const db = createSeedDemoDatabase("daily_34_of_50");
+    const sellers = db.sellers.map((seller, index) => ({ ...seller, is_active: index !== 0, show_on_board: index > 1 }));
+    const board = buildSalesBoardSnapshot({ settings: { ...db.settings, default_monthly_seller_goal: 400 }, sellers,
+      dailySales: [], dailyGoals: [{ id: "old", goal_date: "2026-10-29", general_goal: 9999, created_at: "", updated_at: "" }],
+      dateFilter: resolveDateRangeFilter("today", "2026-10-29"), dataSource: "demo-local" });
+    expect(board.manager.generalGoal).toBe(sellers.filter((seller) => seller.is_active).length * 400);
+    expect(board.goalMonths).toBe(1);
   });
 });

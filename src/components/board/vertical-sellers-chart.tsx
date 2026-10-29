@@ -8,7 +8,7 @@ import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { arrangeCenteredRanking } from "@/lib/ranking-layout";
 
-export function VerticalSellersChart({ sellers, title = "Ranking de puntos", staticDisplay = false }: { sellers: RankedSellerStat[]; title?: string; staticDisplay?: boolean }) {
+export function VerticalSellersChart({ sellers, title = "Ranking de puntos", staticDisplay = false, goalMonths = 1 }: { sellers: RankedSellerStat[]; title?: string; staticDisplay?: boolean; goalMonths?: number }) {
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = staticDisplay || prefersReducedMotion;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -61,7 +61,7 @@ export function VerticalSellersChart({ sellers, title = "Ranking de puntos", sta
                   <div className="seller-stats">
                     {item.effectiveGoal > 0 ? <>
                       <div className="seller-goal" data-complete={item.isGoalCompleted}>{item.isGoalCompleted && <Check size={16} aria-hidden="true" />}<AnimatedNumber value={item.goalCompletionPercent} staticDisplay={staticDisplay} /><span>%</span><small>de meta</small></div>
-                      <p className="seller-meta-label">Meta {item.effectiveGoal.toLocaleString("es-DO")} puntos</p>
+                      <p className="seller-meta-label">{goalMonths > 1 ? `Meta de ${goalMonths} meses` : "Meta mensual"} {item.effectiveGoal.toLocaleString("es-DO")} puntos</p>
                       <div className="seller-goal-track" role="progressbar" aria-label={`Meta de ${item.seller.full_name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, item.goalCompletionPercent)} aria-valuetext={`${item.unitsSold} de ${item.effectiveGoal} puntos · ${item.goalCompletionPercent}%`}>
                         <motion.div initial={false} animate={{ width: `${Math.min(100, item.goalCompletionPercent)}%` }} transition={{ duration: reducedMotion ? 0 : 0.4 }} data-complete={item.isGoalCompleted} />
                       </div>
