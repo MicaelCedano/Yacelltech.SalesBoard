@@ -21,6 +21,8 @@ export interface AppSettings {
   default_general_goal: number;
   default_monthly_seller_goal?: number;
   default_monthly_manager_goal?: number;
+  monthly_seller_prize_name?: string | null;
+  monthly_seller_prize_value?: number | null;
   timezone: string;
   is_demo_environment: boolean;
   version: number;

@@ -57,6 +57,15 @@ describe("Permisos, validación y sumas locales", () => {
     const log = db.auditLogs.find((item) => item.action_type === "MANAGER_SETTINGS_UPDATED")!;
     expect(log.previous_values?.default_monthly_manager_goal).toBe(1000);
     expect(log.new_values?.default_monthly_manager_goal).toBe(750);
+    const prizeRes = await PATCH(new NextRequest("http://localhost/api/admin/settings", { method: "PATCH", body: JSON.stringify({
+      ...db.settings, default_monthly_seller_goal: 450, monthly_seller_prize_name: "  Smart TV 55 pulgadas  ", monthly_seller_prize_value: 25000,
+    }) }));
+    expect(prizeRes.status).toBe(200);
+    expect(db.settings.monthly_seller_prize_name).toBe("Smart TV 55 pulgadas");
+    expect(db.settings.monthly_seller_prize_value).toBe(25000);
+    expect((await PATCH(new NextRequest("http://localhost/api/admin/settings", { method: "PATCH", body: JSON.stringify({
+      ...db.settings, monthly_seller_prize_value: -500,
+    }) }))).status).toBe(400);
   });
   it("la API protege y valida la meta mensual del Manager", async () => {
     const db = readDemoDatabase();

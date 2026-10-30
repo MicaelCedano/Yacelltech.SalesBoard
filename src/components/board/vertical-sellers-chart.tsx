@@ -1,17 +1,38 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, Crown, Users } from "lucide-react";
+import { Check, Crown, Trophy, Users } from "lucide-react";
 import { RankedSellerStat } from "@/types/salesboard";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 
-export function VerticalSellersChart({ sellers, title = "Ranking de puntos", staticDisplay = false, goalMonths = 1 }: { sellers: RankedSellerStat[]; title?: string; staticDisplay?: boolean; goalMonths?: number }) {
+export function VerticalSellersChart({ sellers, title = "Ranking de puntos", staticDisplay = false, goalMonths = 1, prizeName, prizeValue, sellerGoal }: { sellers: RankedSellerStat[]; title?: string; staticDisplay?: boolean; goalMonths?: number; prizeName?: string | null; prizeValue?: number | null; sellerGoal?: number }) {
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = staticDisplay || prefersReducedMotion;
   return (
     <section className="sellers-chart" aria-label="Gráfico vertical de puntos por vendedor">
       <div className="chart-heading"><h1>{title}</h1><span>{sellers.length} {sellers.length === 1 ? "vendedor" : "vendedores"}</span></div>
+      {(Boolean((prizeName ?? "").trim()) || Math.max(0, Math.floor(prizeValue ?? 0)) > 0) && (
+        <div className="chart-prize-banner" role="region" aria-label="Premio de la meta">
+          <div className="chart-prize-main">
+            <span className="chart-prize-icon" aria-hidden="true"><Trophy size={18} strokeWidth={2} /></span>
+            <div className="chart-prize-copy">
+              <span className="chart-prize-kicker">Premio de la meta</span>
+              <strong className="chart-prize-title">{(prizeName ?? "").trim() || "Premio por meta cumplida"}</strong>
+            </div>
+          </div>
+          <div className="chart-prize-meta">
+            {Math.max(0, Math.floor(prizeValue ?? 0)) > 0 && (
+              <span className="chart-prize-price">RD${Math.max(0, Math.floor(prizeValue ?? 0)).toLocaleString("es-DO")}</span>
+            )}
+            {(sellers[0]?.effectiveGoal ?? Math.max(0, (sellerGoal ?? 400) * Math.max(1, goalMonths))) > 0 && (
+              <span className="chart-prize-points">
+                {goalMonths > 1 ? `Meta (${goalMonths} meses):` : "Meta:"} {(sellers[0]?.effectiveGoal ?? Math.max(0, (sellerGoal ?? 400) * Math.max(1, goalMonths))).toLocaleString("es-DO")} puntos
+              </span>
+            )}
+          </div>
+        </div>
+      )}
       {sellers.length === 0 ? <div className="chart-empty"><Users size={32} strokeWidth={1.4} aria-hidden="true" /><h2>El equipo está por llegar.</h2><p>Los vendedores aparecerán aquí cuando estén disponibles.</p></div> : (
         <div className="chart-scroll" tabIndex={0} aria-label="Vendedores ordenados por puntos de mayor a menor; desplaza horizontalmente para ver más">
           <div className="seller-columns" data-count={sellers.length}>

@@ -22,6 +22,17 @@ export const nonNegativeIntSchema = z
   .min(0, "La cantidad de puntos no puede ser negativa")
   .max(100000, "El valor excede el límite permitido");
 
+export const prizeValueSchema = z
+  .number({
+    error: (issue) =>
+      issue.input === undefined
+        ? "Este campo es obligatorio"
+        : "El valor del premio debe ser un número entero válido",
+  })
+  .int("El valor del premio en RD$ debe ser un número entero")
+  .min(0, "El valor del premio no puede ser negativo")
+  .max(100000000, "El valor del premio excede el límite permitido");
+
 export const dailySaleItemInputSchema = z.object({
   seller_id: z.string().uuid("ID de vendedor inválido"),
   units_sold: nonNegativeIntSchema,
@@ -99,6 +110,13 @@ export const updateManagerSettingsSchema = z.object({
   default_monthly_seller_goal: nonNegativeIntSchema,
   // Los clientes anteriores pueden omitirlo; conservar el objetivo almacenado.
   default_monthly_manager_goal: nonNegativeIntSchema.optional(),
+  monthly_seller_prize_name: z
+    .string()
+    .trim()
+    .max(120, "El nombre del premio no puede exceder 120 caracteres")
+    .nullable()
+    .optional(),
+  monthly_seller_prize_value: prizeValueSchema.nullable().optional(),
   expected_version: z.number().int().min(1).optional(),
 });
 

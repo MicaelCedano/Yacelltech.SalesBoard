@@ -103,11 +103,19 @@ export function AdminDashboard({
   const [managerAvatarUrl, setManagerAvatarUrl] = useState(
     initialSnapshot.settings.manager_avatar_url ?? ""
   );
-  const [defaultMonthlySellerGoal, setDefaultMonthlySellerGoal] = useState(
+  const [defaultMonthlySellerGoal, setDefaultMonthlySellerGoal] = useState<number | "">(
     initialSnapshot.settings.default_monthly_seller_goal ?? 400
   );
-  const [defaultMonthlyManagerGoal, setDefaultMonthlyManagerGoal] = useState(
+  const [defaultMonthlyManagerGoal, setDefaultMonthlyManagerGoal] = useState<number | "">(
     initialSnapshot.settings.default_monthly_manager_goal ?? 1000
+  );
+  const [monthlySellerPrizeName, setMonthlySellerPrizeName] = useState(
+    initialSnapshot.settings.monthly_seller_prize_name ?? ""
+  );
+  const [monthlySellerPrizeValue, setMonthlySellerPrizeValue] = useState<number | "">(
+    (initialSnapshot.settings.monthly_seller_prize_value ?? 0) > 0
+      ? (initialSnapshot.settings.monthly_seller_prize_value ?? 0)
+      : ""
   );
   const [storeName, setStoreName] = useState(
     initialSnapshot.settings.store_name
@@ -521,8 +529,10 @@ export function AdminDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(scope === "goals" ? {
           ...snapshot.settings,
-          default_monthly_seller_goal: defaultMonthlySellerGoal,
-          default_monthly_manager_goal: defaultMonthlyManagerGoal,
+          default_monthly_seller_goal: Number(defaultMonthlySellerGoal) || 0,
+          default_monthly_manager_goal: Number(defaultMonthlyManagerGoal) || 0,
+          monthly_seller_prize_name: monthlySellerPrizeName.trim(),
+          monthly_seller_prize_value: Number(monthlySellerPrizeValue) || 0,
           expected_version: snapshot.settings.version,
         } : {
           store_name: storeName.trim() || "YACELLTECH",
@@ -534,6 +544,8 @@ export function AdminDashboard({
             : null,
           default_monthly_seller_goal: snapshot.settings.default_monthly_seller_goal ?? 400,
           default_monthly_manager_goal: snapshot.settings.default_monthly_manager_goal ?? 1000,
+          monthly_seller_prize_name: snapshot.settings.monthly_seller_prize_name ?? "",
+          monthly_seller_prize_value: snapshot.settings.monthly_seller_prize_value ?? 0,
           expected_version: snapshot.settings.version,
         }),
       });
@@ -624,13 +636,29 @@ export function AdminDashboard({
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="rounded-xl border border-separator bg-muted p-4">
                     <label htmlFor="monthly-seller-goal" className="mb-2 block text-sm font-semibold">Meta mensual por vendedor (Puntos)</label>
-                    <Input id="monthly-seller-goal" aria-label="Meta mensual por vendedor" type="number" min={0} max={100000} step={1} required value={defaultMonthlySellerGoal} onChange={(event) => setDefaultMonthlySellerGoal(Number(event.target.value))} />
+                    <Input id="monthly-seller-goal" aria-label="Meta mensual por vendedor" type="number" min={0} max={100000} step={1} required value={defaultMonthlySellerGoal} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDefaultMonthlySellerGoal(event.target.value === "" ? "" : Number(event.target.value))} />
                     <p className="mt-2 text-xs text-secondary">La misma meta se aplica a cada vendedor, con sus propios puntos acumulados durante el mes.</p>
                   </div>
                   <div className="rounded-xl border border-separator bg-muted p-4">
                     <label htmlFor="monthly-manager-goal" className="mb-2 block text-sm font-semibold">Meta mensual del supervisor (Puntos)</label>
-                    <Input id="monthly-manager-goal" aria-label="Meta mensual del supervisor" type="number" min={0} max={100000} step={1} required value={defaultMonthlyManagerGoal} onChange={(event) => setDefaultMonthlyManagerGoal(Number(event.target.value))} />
+                    <Input id="monthly-manager-goal" aria-label="Meta mensual del supervisor" type="number" min={0} max={100000} step={1} required value={defaultMonthlyManagerGoal} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDefaultMonthlyManagerGoal(event.target.value === "" ? "" : Number(event.target.value))} />
                     <p className="mt-2 text-xs text-secondary">Objetivo del Manager General. Suma los puntos de todos los vendedores para alcanzar esta meta.</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-separator bg-muted p-4 space-y-4">
+                  <div>
+                    <h2 className="text-sm font-semibold text-foreground">Premio de la meta mensual de vendedores</h2>
+                    <p className="mt-1 text-xs text-secondary">Se muestra en una franja destacada dentro del ranking público (justo debajo del título) con el nombre del premio, su valor en RD$ y los puntos necesarios. Déjalo en blanco si no deseas mostrar premio.</p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="monthly-seller-prize-name" className="mb-2 block text-sm font-semibold">Premio en texto</label>
+                      <Input id="monthly-seller-prize-name" aria-label="Premio en texto" type="text" maxLength={120} placeholder="Ej. Bono en efectivo, Smart TV, Fin de semana..." value={monthlySellerPrizeName} onChange={(event) => setMonthlySellerPrizeName(event.target.value)} />
+                    </div>
+                    <div>
+                      <label htmlFor="monthly-seller-prize-value" className="mb-2 block text-sm font-semibold">Precio / Valor del premio (RD$)</label>
+                      <Input id="monthly-seller-prize-value" aria-label="Valor del premio en RD$" type="number" min={0} max={100000000} step={1} placeholder="Ej. 5000" value={monthlySellerPrizeValue} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setMonthlySellerPrizeValue(event.target.value === "" ? "" : Number(event.target.value))} />
+                    </div>
                   </div>
                 </div>
                 <Button type="submit">{isSavingManager ? "Guardando..." : "Guardar metas"}</Button>
@@ -733,7 +761,7 @@ export function AdminDashboard({
             <section className="admin-summary" aria-label="Resumen diario de la tienda">
               <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p><p className="text-xs text-secondary mt-1">Acumulado mes en pantalla: <strong>{monthSnapshot.manager.totalUnitsSold.toLocaleString("es-DO")} pts</strong></p></div>
               <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados ({selectedDate === todaySantoDomingo ? "Hoy" : formatShortDateEs(selectedDate)})</p></div>
-              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p><p className="text-xs text-secondary mt-2">Meta mensual del Manager: {(snapshot.settings.default_monthly_manager_goal ?? 1000).toLocaleString("es-DO")} puntos</p></div>
+              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p>{(Boolean((snapshot.settings.monthly_seller_prize_name ?? "").trim()) || (snapshot.settings.monthly_seller_prize_value ?? 0) > 0) && <p className="text-xs text-foreground mt-1">Premio: <strong>{(snapshot.settings.monthly_seller_prize_name ?? "").trim() || "Premio por meta cumplida"}</strong>{(snapshot.settings.monthly_seller_prize_value ?? 0) > 0 ? ` · RD$${(snapshot.settings.monthly_seller_prize_value ?? 0).toLocaleString("es-DO")}` : ""}</p>}<p className="text-xs text-secondary mt-2">Meta mensual del Manager: {(snapshot.settings.default_monthly_manager_goal ?? 1000).toLocaleString("es-DO")} puntos</p></div>
             </section>
 
             {/* Tabla Editable de Registro Diario (Sección 7.1) */}

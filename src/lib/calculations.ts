@@ -285,6 +285,8 @@ export function buildSalesBoardSnapshot(params: {
       ...settings,
       default_monthly_seller_goal: monthlyGoalForRange,
       default_monthly_manager_goal: monthlyManagerGoal,
+      monthly_seller_prize_name: (settings.monthly_seller_prize_name ?? "").trim(),
+      monthly_seller_prize_value: Math.max(0, Math.floor(settings.monthly_seller_prize_value ?? 0)),
       // Show the new default for existing boards while preserving custom titles.
       board_title: settings.board_title === "Ranking de ventas" ? "Ranking de puntos" : settings.board_title,
     },

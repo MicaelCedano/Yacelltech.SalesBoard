@@ -113,6 +113,15 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .chart-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; margin-bottom: 22px; flex-shrink: 0; }
 .chart-heading h1 { font-size: clamp(24px, 2vw, 36px); font-weight: 600; letter-spacing: -.9px; line-height: 1.2; }
 .chart-heading > span { font-size: 15px; color: var(--secondary); white-space: nowrap; }
+.chart-prize-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; padding: 12px 18px; margin-bottom: 16px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--leader) 32%, var(--separator)); background: color-mix(in srgb, var(--leader-emphasis) 11%, var(--surface)); flex-shrink: 0; }
+.chart-prize-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.chart-prize-icon { width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--leader-emphasis); color: #1D1D1F; }
+.chart-prize-copy { display: flex; flex-direction: column; min-width: 0; }
+.chart-prize-kicker { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--leader); line-height: 1.2; }
+.chart-prize-title { font-size: clamp(16px, 1.25vw, 22px); font-weight: 650; letter-spacing: -.3px; color: var(--foreground); line-height: 1.25; overflow-wrap: anywhere; }
+.chart-prize-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-variant-numeric: tabular-nums; }
+.chart-prize-price { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px; background: var(--leader-emphasis); color: #1D1D1F; font-size: clamp(15px, 1.15vw, 20px); font-weight: 700; letter-spacing: -.3px; line-height: 1.2; }
+.chart-prize-points { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--separator); color: var(--secondary); font-size: clamp(12px, .95vw, 15px); font-weight: 550; line-height: 1.2; }
 .chart-scroll { overflow-x: auto; flex: 1; min-height: 0; padding-top: clamp(22px, 2vw, 36px); padding-bottom: 4px; display: flex; flex-direction: column; }
 .seller-columns { position: relative; width: 100%; flex: 1; min-height: 490px; display: flex; align-items: stretch; }
 .seller-column { --seller-color: var(--chart-bar); display: grid; grid-template-rows: 184px minmax(180px, 1fr) 92px; min-width: 156px; flex: 1; position: relative; }
@@ -219,6 +228,13 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .progress-track { height: 24px; }
   .chart-heading h1 { font-size: 50px; }
   .chart-heading > span { font-size: 24px; }
+  .chart-prize-banner { padding: 18px 28px; border-radius: 24px; margin-bottom: 22px; }
+  .chart-prize-icon { width: 52px; height: 52px; border-radius: 14px; }
+  .chart-prize-icon svg { width: 28px; height: 28px; }
+  .chart-prize-kicker { font-size: 16px; }
+  .chart-prize-title { font-size: 32px; }
+  .chart-prize-price { font-size: 30px; padding: 8px 18px; }
+  .chart-prize-points { font-size: 22px; padding: 8px 18px; }
   .seller-column { grid-template-rows: 260px minmax(250px, 1fr) 150px; }
   .seller-identity .h-16 { width: 144px; height: 144px; }
   .seller-name h2 { font-size: 38px; }
@@ -339,6 +355,8 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .manager-progress-labels { font-size: 14px; margin-top: 10px; }
   .sellers-chart { padding: 22px 28px 20px; }
   .chart-heading { margin-bottom: 14px; }
+  .chart-prize-banner { padding: 9px 14px; margin-bottom: 10px; border-radius: 14px; }
+  .chart-prize-icon { width: 32px; height: 32px; }
   .chart-heading h1 { font-size: clamp(28px, 2vw, 36px); }
   .chart-heading > span { font-size: 15px; }
   .chart-empty { min-height: 0; }
@@ -376,6 +394,10 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .manager-progress-labels { font-size: 13px; margin-top: 8px; }
   .sellers-chart { padding: 16px 20px; }
   .chart-heading { margin-bottom: 12px; }
+  .chart-prize-banner { padding: 7px 12px; margin-bottom: 8px; }
+  .chart-prize-title { font-size: 16px; }
+  .chart-prize-price { font-size: 15px; padding: 4px 10px; }
+  .chart-prize-points { font-size: 12px; padding: 4px 10px; }
   .chart-heading h1 { font-size: 26px; }
   .seller-name { margin-top: 6px; }
   .seller-rank { min-height: 22px; padding-block: 2px; margin-top: 3px; }
@@ -409,6 +431,13 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .manager-progress-labels { font-size: 11px; margin-top: 6px; gap: 8px; }
   .sellers-chart { padding: 12px 16px; border-radius: 18px; }
   .chart-heading { margin-bottom: 8px; }
+  .chart-prize-banner { padding: 5px 10px; margin-bottom: 6px; border-radius: 10px; gap: 8px 12px; }
+  .chart-prize-icon { width: 24px; height: 24px; border-radius: 7px; }
+  .chart-prize-icon svg { width: 14px; height: 14px; }
+  .chart-prize-kicker { font-size: 9px; }
+  .chart-prize-title { font-size: 13px; }
+  .chart-prize-price { font-size: 13px; padding: 3px 8px; }
+  .chart-prize-points { font-size: 11px; padding: 3px 8px; }
   .chart-heading h1 { font-size: 22px; }
   .chart-heading > span { font-size: 12px; }
   .seller-identity { padding-block: 4px; }

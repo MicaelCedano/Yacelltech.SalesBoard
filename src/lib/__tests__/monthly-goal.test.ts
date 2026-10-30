@@ -70,5 +70,15 @@ describe("Meta mensual compartida", () => {
     expect(none.manager.generalGoal).toBe(0);
     expect(none.manager.completionPercent).toBe(0);
     expect(none.manager.isGoalMet).toBe(false);
+    const withPrize = buildSalesBoardSnapshot({
+      settings: { ...db.settings, monthly_seller_prize_name: "  Bono especial + cena  ", monthly_seller_prize_value: 15000 },
+      sellers: db.sellers,
+      dailySales: db.dailySales,
+      dailyGoals: db.dailyGoals,
+      dateFilter: resolveDateRangeFilter("thisMonth", "2026-10-30"),
+      dataSource: "demo-local",
+    });
+    expect(withPrize.settings.monthly_seller_prize_name).toBe("Bono especial + cena");
+    expect(withPrize.settings.monthly_seller_prize_value).toBe(15000);
   });
 });

@@ -39,6 +39,70 @@ export interface AdminActor {
   email: string;
 }
 
+const PRIZE_TZ_DELIMITER = "||";
+
+function normalizeAppSettingsRow(raw: AppSettings | null | undefined): AppSettings {
+  const base: AppSettings = raw ?? {
+    id: 1,
+    store_name: "YACELLTECH",
+    board_title: "Ranking de puntos",
+    manager_name: "Roberto Méndez",
+    manager_label: "MANAGER GENERAL",
+    manager_avatar_url: null,
+    default_general_goal: 50,
+    default_monthly_seller_goal: 400,
+    default_monthly_manager_goal: 1000,
+    monthly_seller_prize_name: "",
+    monthly_seller_prize_value: 0,
+    timezone: "America/Santo_Domingo",
+    is_demo_environment: false,
+    version: 1,
+    updated_at: new Date().toISOString(),
+  };
+
+  let tz = base.timezone || "America/Santo_Domingo";
+  let fallbackName = "";
+  let fallbackValue = 0;
+
+  if (tz.includes(PRIZE_TZ_DELIMITER)) {
+    const [cleanTz, encodedJson] = tz.split(PRIZE_TZ_DELIMITER, 2);
+    tz = cleanTz || "America/Santo_Domingo";
+    if (encodedJson) {
+      try {
+        const parsed = JSON.parse(encodedJson) as { name?: unknown; value?: unknown };
+        if (typeof parsed.name === "string") fallbackName = parsed.name.trim();
+        if (typeof parsed.value === "number" && Number.isFinite(parsed.value)) {
+          fallbackValue = Math.max(0, Math.floor(parsed.value));
+        }
+      } catch {
+        // Ignorar metadatos malformados
+      }
+    }
+  }
+
+  const explicitName = typeof base.monthly_seller_prize_name === "string" ? base.monthly_seller_prize_name.trim() : "";
+  const explicitValue =
+    typeof base.monthly_seller_prize_value === "number" && Number.isFinite(base.monthly_seller_prize_value)
+      ? Math.max(0, Math.floor(base.monthly_seller_prize_value))
+      : 0;
+
+  return {
+    ...base,
+    timezone: tz,
+    monthly_seller_prize_name: explicitName || fallbackName,
+    monthly_seller_prize_value: explicitValue > 0 ? explicitValue : fallbackValue,
+  };
+}
+
+function encodeTimezoneWithPrize(baseTimezone: string, prizeName: string, prizeValue: number): string {
+  const cleanTz = (baseTimezone || "America/Santo_Domingo").split(PRIZE_TZ_DELIMITER)[0] || "America/Santo_Domingo";
+  const cleanName = prizeName.trim();
+  const cleanValue = Math.max(0, Math.floor(prizeValue));
+  if (!cleanName && cleanValue === 0) {
+    return cleanTz;
+  }
+  return `${cleanTz}${PRIZE_TZ_DELIMITER}${JSON.stringify({ name: cleanName, value: cleanValue })}`;
+}
 /**
  * Obtiene el estado completo del tablero para una fecha o rango de fechas.
  * Público: solo expone los campos destinados al tablero; nunca expone audit_logs ni perfiles privados.
@@ -99,21 +163,7 @@ export async function fetchSalesBoardSnapshot(params?: {
       if (result.error) throw new Error(`No se pudo cargar el tablero: ${result.error.message}`);
     }
 
-    const settings: AppSettings = (settingsRes.data as AppSettings | null) ?? {
-      id: 1,
-      store_name: "YACELLTECH",
-      board_title: "Ranking de puntos",
-      manager_name: "Roberto Méndez",
-      manager_label: "MANAGER GENERAL",
-      manager_avatar_url: null,
-      default_general_goal: 50,
-      default_monthly_seller_goal: 400,
-      default_monthly_manager_goal: 1000,
-      timezone: "America/Santo_Domingo",
-      is_demo_environment: false,
-      version: 1,
-      updated_at: new Date().toISOString(),
-    };
+    const settings: AppSettings = normalizeAppSettingsRow(settingsRes.data as AppSettings | null);
 
     const sellers = (sellersRes.data as Seller[] | null) ?? [];
     const dailySales = (salesRes.data as DailySaleRecord[] | null) ?? [];
@@ -647,6 +697,19 @@ export async function updateManagerSettingsRecord(
     }
 
     const nextVersion = ((currentSettings as AppSettings | null)?.version ?? 1) + 1;
+    const normalizedCurrent = normalizeAppSettingsRow(currentSettings as AppSettings | null);
+    const nextPrizeName =
+      input.monthly_seller_prize_name !== undefined
+        ? (input.monthly_seller_prize_name ?? "").trim()
+        : normalizedCurrent.monthly_seller_prize_name ?? "";
+    const nextPrizeValue =
+      input.monthly_seller_prize_value !== undefined
+        ? Math.max(0, Math.floor(input.monthly_seller_prize_value ?? 0))
+        : normalizedCurrent.monthly_seller_prize_value ?? 0;
+    const hasDedicatedPrizeColumns =
+      Boolean(currentSettings) &&
+      "monthly_seller_prize_name" in (currentSettings as Record<string, unknown>) &&
+      "monthly_seller_prize_value" in (currentSettings as Record<string, unknown>);
 
     const { data, error } = await supabase
       .from("app_settings")
@@ -663,6 +726,15 @@ export async function updateManagerSettingsRecord(
         ...(input.default_monthly_manager_goal !== undefined
           ? { default_monthly_manager_goal: input.default_monthly_manager_goal }
           : {}),
+        ...(hasDedicatedPrizeColumns
+          ? {
+              monthly_seller_prize_name: nextPrizeName,
+              monthly_seller_prize_value: nextPrizeValue,
+              timezone: normalizedCurrent.timezone,
+            }
+          : {
+              timezone: encodeTimezoneWithPrize(normalizedCurrent.timezone, nextPrizeName, nextPrizeValue),
+            }),
         version: nextVersion,
         updated_by: actor.userId,
         updated_at: nowIso,
@@ -687,7 +759,7 @@ export async function updateManagerSettingsRecord(
       new_values: data,
     });
 
-    return data as AppSettings;
+    return normalizeAppSettingsRow(data as AppSettings);
   }
 
   const demoDb = readDemoDatabase();
@@ -704,6 +776,14 @@ export async function updateManagerSettingsRecord(
         : previous.manager_avatar_url,
     default_monthly_seller_goal: input.default_monthly_seller_goal,
     default_monthly_manager_goal: input.default_monthly_manager_goal ?? previous.default_monthly_manager_goal ?? 1000,
+    monthly_seller_prize_name:
+      input.monthly_seller_prize_name !== undefined
+        ? (input.monthly_seller_prize_name ?? "").trim()
+        : previous.monthly_seller_prize_name ?? "",
+    monthly_seller_prize_value:
+      input.monthly_seller_prize_value !== undefined
+        ? Math.max(0, Math.floor(input.monthly_seller_prize_value ?? 0))
+        : previous.monthly_seller_prize_value ?? 0,
     version: previous.version + 1,
     updated_by: actor.userId,
     updated_at: nowIso,
@@ -725,6 +805,8 @@ export async function updateManagerSettingsRecord(
       default_general_goal: previous.default_general_goal,
       default_monthly_seller_goal: previous.default_monthly_seller_goal,
       default_monthly_manager_goal: previous.default_monthly_manager_goal,
+      monthly_seller_prize_name: previous.monthly_seller_prize_name ?? "",
+      monthly_seller_prize_value: previous.monthly_seller_prize_value ?? 0,
     },
     new_values: {
       manager_name: updated.manager_name,
@@ -732,6 +814,8 @@ export async function updateManagerSettingsRecord(
       default_general_goal: updated.default_general_goal,
       default_monthly_seller_goal: updated.default_monthly_seller_goal,
       default_monthly_manager_goal: updated.default_monthly_manager_goal,
+      monthly_seller_prize_name: updated.monthly_seller_prize_name ?? "",
+      monthly_seller_prize_value: updated.monthly_seller_prize_value ?? 0,
     },
     created_at: nowIso,
   });

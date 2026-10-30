@@ -56,6 +56,8 @@ export function createSeedDemoDatabase(
     default_general_goal: defaultGoal,
     default_monthly_seller_goal: 400,
     default_monthly_manager_goal: 1000,
+    monthly_seller_prize_name: "",
+    monthly_seller_prize_value: 0,
     timezone: "America/Santo_Domingo",
     is_demo_environment: true,
     version: 1,
