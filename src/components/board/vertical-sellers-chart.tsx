@@ -1,45 +1,22 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef } from "react";
 import { Check, Crown, Users } from "lucide-react";
 import { RankedSellerStat } from "@/types/salesboard";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
-import { arrangeCenteredRanking } from "@/lib/ranking-layout";
 
 export function VerticalSellersChart({ sellers, title = "Ranking de puntos", staticDisplay = false, goalMonths = 1 }: { sellers: RankedSellerStat[]; title?: string; staticDisplay?: boolean; goalMonths?: number }) {
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = staticDisplay || prefersReducedMotion;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { orderedSellers, needsTrailingSpace } = arrangeCenteredRanking(sellers);
-  const sellerOrder = orderedSellers.map((item) => item.seller.id).join(",");
-  const leaderIds = sellers.filter((item) => item.rank === 1).map((item) => item.seller.id).join(",");
-
-  useEffect(() => {
-    const container = scrollRef.current;
-    if (!container || !leaderIds) return;
-    const centerLeaders = () => {
-      const leaders = container.querySelectorAll<HTMLElement>('[data-rank="1"]');
-      const first = leaders[0];
-      const last = leaders[leaders.length - 1];
-      if (!first || !last) return;
-      const center = (first.offsetLeft + last.offsetLeft + last.offsetWidth) / 2;
-      container.scrollTo({ left: Math.max(0, center - container.clientWidth / 2), behavior: "instant" });
-    };
-    centerLeaders();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(centerLeaders);
-    observer?.observe(container);
-    return () => observer?.disconnect();
-  }, [leaderIds, sellerOrder]);
   return (
     <section className="sellers-chart" aria-label="Gráfico vertical de puntos por vendedor">
       <div className="chart-heading"><h1>{title}</h1><span>{sellers.length} {sellers.length === 1 ? "vendedor" : "vendedores"}</span></div>
       {sellers.length === 0 ? <div className="chart-empty"><Users size={32} strokeWidth={1.4} aria-hidden="true" /><h2>El equipo está por llegar.</h2><p>Los vendedores aparecerán aquí cuando estén disponibles.</p></div> : (
-        <div ref={scrollRef} className="chart-scroll" tabIndex={0} aria-label="Vendedores; líder en el centro, desplaza horizontalmente para ver más">
+        <div className="chart-scroll" tabIndex={0} aria-label="Vendedores ordenados por puntos de mayor a menor; desplaza horizontalmente para ver más">
           <div className="seller-columns" data-count={sellers.length}>
             <AnimatePresence initial={false}>
-              {orderedSellers.map((item) => (
+              {sellers.map((item) => (
                 <motion.article key={item.seller.id} layout={!reducedMotion} initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reducedMotion ? 0 : 0.4 }} className="seller-column" data-seller-id={item.seller.id} data-rank={item.rank} aria-label={`${item.seller.full_name}: ${item.unitsSold} ${item.unitsSold === 1 ? "punto" : "puntos"}${item.rank ? `, posición ${item.rank}` : ""}`}>
                   <div className="seller-identity">
                     <div className="seller-avatar-wrap">
@@ -69,7 +46,6 @@ export function VerticalSellersChart({ sellers, title = "Ranking de puntos", sta
                   </div>
                 </motion.article>
               ))}
-              {needsTrailingSpace && <motion.div key="ranking-balance" layout={!reducedMotion} className="seller-column-spacer" aria-hidden="true" />}
             </AnimatePresence>
           </div>
         </div>

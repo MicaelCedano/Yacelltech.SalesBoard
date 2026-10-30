@@ -115,11 +115,10 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .chart-heading > span { font-size: 15px; color: var(--secondary); white-space: nowrap; }
 .chart-scroll { overflow-x: auto; flex: 1; min-height: 0; padding-top: clamp(22px, 2vw, 36px); padding-bottom: 4px; display: flex; flex-direction: column; }
 .seller-columns { position: relative; width: 100%; flex: 1; min-height: 490px; display: flex; align-items: stretch; }
-.seller-column-spacer { flex: 1; min-width: 156px; }
 .seller-column { --seller-color: var(--chart-bar); display: grid; grid-template-rows: 184px minmax(180px, 1fr) 92px; min-width: 156px; flex: 1; position: relative; }
 .seller-column[data-rank="1"] { --seller-color: var(--chart-leader); }
-.seller-columns[data-count="1"] { max-width: 540px; margin-inline: auto; }
-.seller-columns[data-count="2"] { max-width: 1000px; margin-inline: auto; }
+.seller-columns[data-count="1"] { max-width: 540px; }
+.seller-columns[data-count="2"] { max-width: 1000px; }
 
 .seller-identity { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; padding: 6px 12px 8px; min-width: 0; }
 .seller-identity .h-16 { height: 96px; width: 96px; }
@@ -272,7 +271,6 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .chart-heading > span { font-size: 11px; }
   .seller-columns { min-height: 500px; }
   .seller-column { min-width: 146px; grid-template-rows: 160px minmax(250px, 1fr) 92px; }
-  .seller-column-spacer { min-width: 146px; }
   .seller-identity .h-16 { height: 76px; width: 76px; }
   .seller-name h2 { font-size: 18px; }
   .seller-bar-stage { padding-top: 66px; }
@@ -346,7 +344,6 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .chart-empty { min-height: 0; }
   .seller-columns { min-height: 0; }
   .seller-column { min-width: var(--tv-column-min); grid-template-rows: var(--tv-identity-height) minmax(0, 1fr) var(--tv-stats-height); }
-  .seller-column-spacer { min-width: var(--tv-column-min); }
   .seller-identity { padding: 6px 8px; }
   .seller-identity .h-16 { width: var(--tv-avatar-size); height: var(--tv-avatar-size); }
   .seller-name { margin-top: 8px; }
