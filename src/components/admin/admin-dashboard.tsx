@@ -41,8 +41,8 @@ interface EditableDailyRow {
   avatar_url: string | null;
   is_active: boolean;
   show_on_board: boolean;
-  units_sold: number;
-  points_to_add: number;
+  units_sold: number | "";
+  points_to_add: number | "";
   expected_version: number;
 }
 
@@ -253,7 +253,7 @@ export function AdminDashboard({
 
   // Cálculo automático en vivo del total del Manager mientras el admin edita la tabla
   const liveManagerTotal = useMemo(() => {
-    return rows.reduce((sum, r) => sum + (Number.isFinite(r.units_sold) ? r.units_sold : 0) + (dailyMode === "add" && Number.isFinite(r.points_to_add) ? r.points_to_add : 0), 0);
+    return rows.reduce((sum, r) => sum + (Number(r.units_sold) || 0) + (dailyMode === "add" ? Number(r.points_to_add) || 0 : 0), 0);
   }, [rows, dailyMode]);
 
   const monthlySellerGoal = snapshot.settings.default_monthly_seller_goal ?? 400;
@@ -281,7 +281,7 @@ export function AdminDashboard({
         sale_date: selectedDate,
         entries: rows.map((r) => ({
           seller_id: r.seller_id,
-          units_sold: dailyMode === "add" ? r.points_to_add : r.units_sold,
+          units_sold: Number(dailyMode === "add" ? r.points_to_add : r.units_sold),
           expected_version: r.expected_version,
         })),
       };
@@ -820,14 +820,15 @@ export function AdminDashboard({
                               aria-label={dailyMode === "add" ? `Puntos a sumar a ${row.full_name}` : `Total del día de ${row.full_name}`}
                               disabled={dailyRetryPending}
                               value={dailyMode === "add" ? row.points_to_add : row.units_sold}
+                              onFocus={(e) => e.currentTarget.select()}
                               onChange={(e) => {
-                                const val = Number(e.target.value || "0");
+                                const val = e.target.value === "" ? "" : Number(e.target.value);
                                 setRows((prev) =>
                                   prev.map((item, i) =>
                                     i === index
                                       ? {
                                           ...item,
-                                          [dailyMode === "add" ? "points_to_add" : "units_sold"]: Number.isNaN(val) ? 0 : val,
+                                          [dailyMode === "add" ? "points_to_add" : "units_sold"]: val,
                                         }
                                       : item
                                   )
@@ -835,7 +836,7 @@ export function AdminDashboard({
                               }}
                               className="ml-auto w-28 sm:w-32 text-right font-display text-lg font-semibold tabular-nums text-foreground border-separator bg-muted"
                             />
-                            {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Hoy: {row.units_sold} · Quedará hoy: {row.units_sold + row.points_to_add} · Mes en TV: {(monthUnitsBySeller.get(row.seller_id) ?? 0) + (selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate ? row.points_to_add : 0)}</p>}
+                            {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Hoy: {row.units_sold} · Quedará hoy: {Number(row.units_sold) + Number(row.points_to_add)} · Mes en TV: {(monthUnitsBySeller.get(row.seller_id) ?? 0) + (selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate ? Number(row.points_to_add) : 0)}</p>}
                           </td>
 
                           <td className="py-3.5 px-4 text-center">
