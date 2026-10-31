@@ -59,6 +59,19 @@ describe("Reportes de puntos y Excel", () => {
     expect(daily.getCell("D8").value).toMatchObject({ result: 24 });
     expect(book.getWorksheet("Movimientos")!.getCell("D5").value).toBe(-3);
     expect(daily.views[0]).toMatchObject({ state: "frozen", xSplit: 1, ySplit: 4 });
+
+    // Comprobamos que no se incluye la ID de los vendedores en ninguna hoja
+    for (const sheet of book.worksheets) {
+      sheet.eachRow((row) => {
+        const values = Array.isArray(row.values) ? row.values : Object.values(row.values || {});
+        for (const cellVal of values) {
+          expect(cellVal).not.toBe("ID vendedor");
+          for (const s of report.sellers) {
+            expect(cellVal).not.toBe(s.id);
+          }
+        }
+      });
+    }
   });
 
   it("exporta un XLSX dedicado para un solo vendedor con resumen, día a día y auditoría", async () => {

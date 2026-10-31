@@ -337,15 +337,14 @@ async function createAllSellersReportExcel(report: PointsReport) {
 
   const summary = setup(
     "Resumen",
-    ["Vendedor", "Estado actual", "Puntos del período", "ID vendedor"],
-    [28, 18, 24, 40]
+    ["Vendedor", "Estado actual", "Puntos del período"],
+    [28, 18, 24]
   );
   report.sellers.forEach((seller) =>
     summary.addRow([
       seller.name,
       seller.active ? "Activo" : "Inactivo",
       seller.total,
-      seller.id,
     ])
   );
   const totalRow = summary.addRow([
@@ -402,8 +401,8 @@ async function createAllSellersReportExcel(report: PointsReport) {
 
   const detail = setup(
     "Detalle diario",
-    ["Fecha", "Vendedor", "Puntos del día", "Registro", "ID vendedor"],
-    [16, 28, 20, 20, 40]
+    ["Fecha", "Vendedor", "Puntos del día", "Registro"],
+    [16, 28, 20, 20]
   );
   for (const day of report.days)
     for (const seller of report.sellers) {
@@ -413,7 +412,6 @@ async function createAllSellersReportExcel(report: PointsReport) {
         seller.name,
         points,
         points === null ? "Sin registro" : "Guardado",
-        seller.id,
       ]);
     }
   detail.getColumn(1).numFmt = "dd/mm/yyyy";
@@ -430,9 +428,8 @@ async function createAllSellersReportExcel(report: PointsReport) {
       "Total resultante",
       "Aplicado (Santo Domingo)",
       "Administrador",
-      "ID vendedor",
     ],
-    [18, 26, 25, 22, 20, 22, 30, 36, 40]
+    [18, 26, 25, 22, 20, 22, 30, 36]
   );
   const timestamp = new Intl.DateTimeFormat("es-DO", {
     timeZone: "America/Santo_Domingo",
@@ -449,7 +446,6 @@ async function createAllSellersReportExcel(report: PointsReport) {
       movement.total,
       timestamp.format(new Date(movement.appliedAt)),
       movement.appliedBy,
-      movement.sellerId,
     ]);
   movements.getColumn(1).numFmt = "dd/mm/yyyy";
   [4, 5, 6].forEach((column) => {
