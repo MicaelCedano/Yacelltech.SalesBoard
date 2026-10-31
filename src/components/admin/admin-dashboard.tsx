@@ -65,6 +65,7 @@ export function AdminDashboard({
   const [isSavingDaily, setIsSavingDaily] = useState(false);
   const [isClosingMonth, setIsClosingMonth] = useState(false);
   const [showCloseMonthConfirm, setShowCloseMonthConfirm] = useState(false);
+  const [isPurgingHistory, setIsPurgingHistory] = useState(false);
   const [monthSnapshot, setMonthSnapshot] = useState<SalesBoardSnapshot>(initialSnapshot);
   const [dailyMode, setDailyMode] = useState<"add" | "set">("add");
   const [loadedDailyDate, setLoadedDailyDate] = useState<string | null>(null);
@@ -381,6 +382,38 @@ export function AdminDashboard({
       );
     } finally {
       setIsClosingMonth(false);
+    }
+  };
+
+  const handlePurgeTestHistory = async () => {
+    const ok = window.confirm(
+      "¿Estás seguro de que deseas eliminar permanentemente todas las ventas de prueba anteriores al 30 de octubre de 2026?\n\nSolo se conservarán los registros del 30 de octubre en adelante."
+    );
+    if (!ok) return;
+
+    try {
+      setIsPurgingHistory(true);
+      const res = await fetch("/api/admin/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "purge_test_history", keep_from: "2026-10-30" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "No se pudo limpiar el historial");
+
+      void loadMonthSnapshot();
+      void loadHistoryRange();
+      void loadAuditHistory();
+      broadcastBoardUpdate();
+
+      showNotification(
+        "success",
+        `Historial de prueba eliminado correctamente (${data.deletedSalesCount ?? 0} registros borrados). Solo se conservan las ventas a partir del 30 de octubre.`
+      );
+    } catch (err) {
+      showNotification("error", err instanceof Error ? err.message : "Error al limpiar el historial");
+    } finally {
+      setIsPurgingHistory(false);
     }
   };
 
@@ -1337,6 +1370,28 @@ export function AdminDashboard({
           <div className="space-y-6">
             {/* Historial completo por persona y día (sin necesidad de Excel, conservando botón de exportar Excel) */}
             <PointsReports />
+
+            {/* Limpieza de datos de prueba anteriores al 30 de octubre */}
+            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="font-display text-lg font-medium text-foreground">
+                    Limpiar historial de pruebas
+                  </h3>
+                  <p className="mt-1 text-xs text-secondary max-w-2xl">
+                    Elimina permanentemente todas las ventas de prueba previas al <strong>30 de octubre de 2026</strong>. Solo se conservará el historial del 30 de octubre en adelante.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isPurgingHistory}
+                  onClick={handlePurgeTestHistory}
+                  className="inline-flex items-center justify-center rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-500 disabled:opacity-50 transition-colors shrink-0"
+                >
+                  {isPurgingHistory ? "Eliminando pruebas…" : "Borrar pruebas anteriores al 30 de oct"}
+                </button>
+              </div>
+            </div>
 
             {/* Inicializador Explícito y Seguro de Datos de Demostración (Sección 13) */}
             <div className="rounded-2xl border border-separator bg-surface p-5">

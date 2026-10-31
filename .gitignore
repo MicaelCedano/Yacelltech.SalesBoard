@@ -40,3 +40,5 @@ next-env.d.ts
 /.codex-attachments/
 /artifacts/
 /supabase/.temp/
+
+.vercel

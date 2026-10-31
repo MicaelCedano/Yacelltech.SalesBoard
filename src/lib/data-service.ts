@@ -476,6 +476,73 @@ export async function closeCurrentMonthAndResetBoard(
 }
 
 /**
+ * Elimina registros de prueba anteriores a una fecha específica,
+ * conservando el ciclo y las ventas a partir de dicha fecha.
+ */
+export async function purgeTestHistoryBeforeDate(
+  keepFromDate: string = "2026-10-30",
+  actor: AdminActor
+): Promise<{ deletedSalesCount: number; deletedGoalsCount: number }> {
+  const supabase = await getSupabaseServerClient();
+
+  if (supabase) {
+    const { data: deletedSales, error: salesErr } = await supabase
+      .from("daily_sales")
+      .delete()
+      .lt("sale_date", keepFromDate)
+      .select("id");
+    if (salesErr) throw new Error(`Error al eliminar ventas de prueba: ${salesErr.message}`);
+
+    const { data: deletedGoals, error: goalsErr } = await supabase
+      .from("daily_goals")
+      .delete()
+      .lt("goal_date", keepFromDate)
+      .neq("goal_date", CYCLE_START_MARKER_GOAL_DATE)
+      .select("id");
+    if (goalsErr) throw new Error(`Error al eliminar metas de prueba: ${goalsErr.message}`);
+
+    await supabase.from("audit_logs").insert({
+      id: crypto.randomUUID(),
+      actor_id: actor.userId,
+      actor_email: actor.email || "admin@yacelltech.com",
+      action_type: "PURGE_TEST_HISTORY",
+      entity_type: "daily_sales",
+      entity_id: keepFromDate,
+      sale_date: keepFromDate,
+      previous_values: null,
+      new_values: {
+        keepFromDate,
+        deletedSalesCount: deletedSales?.length ?? 0,
+        deletedGoalsCount: deletedGoals?.length ?? 0,
+      },
+    });
+
+    return {
+      deletedSalesCount: deletedSales?.length ?? 0,
+      deletedGoalsCount: deletedGoals?.length ?? 0,
+    };
+  }
+
+  // Modo demostración local
+  const demoDb = readDemoDatabase();
+  const initialSalesCount = demoDb.dailySales.length;
+  const initialGoalsCount = demoDb.dailyGoals.length;
+
+  demoDb.dailySales = demoDb.dailySales.filter((s) => s.sale_date >= keepFromDate);
+  demoDb.dailyGoals = demoDb.dailyGoals.filter(
+    (g) => g.goal_date >= keepFromDate || g.goal_date === CYCLE_START_MARKER_GOAL_DATE
+  );
+  demoDb.auditLogs = demoDb.auditLogs.filter((a) => !a.sale_date || a.sale_date >= keepFromDate);
+
+  writeDemoDatabase(demoDb);
+
+  return {
+    deletedSalesCount: initialSalesCount - demoDb.dailySales.length,
+    deletedGoalsCount: initialGoalsCount - demoDb.dailyGoals.length,
+  };
+}
+
+/**
  * Crea un nuevo vendedor sin alterar historiales previos.
  */
 export async function createSellerRecord(
