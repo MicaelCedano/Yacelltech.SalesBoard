@@ -60,7 +60,12 @@ export function PointsReports() {
   const [showMovementsAudit, setShowMovementsAudit] = useState(false);
 
   const generate = useCallback(
-    async (format: "json" | "xlsx", customStart?: string, customEnd?: string) => {
+    async (
+      format: "json" | "xlsx",
+      customStart?: string,
+      customEnd?: string,
+      targetSellerId?: string
+    ) => {
       const rangeStart = customStart ?? startDate;
       const rangeEnd = customEnd ?? endDate;
       setError("");
@@ -75,12 +80,24 @@ export function PointsReports() {
       }
       setBusy(format);
       try {
+        const sellerFilter =
+          targetSellerId !== undefined
+            ? targetSellerId
+            : selectedSellerId !== "all"
+            ? selectedSellerId
+            : undefined;
+
+        const params = new URLSearchParams({
+          startDate: rangeStart,
+          endDate: rangeEnd,
+          format,
+        });
+        if (sellerFilter && sellerFilter !== "all") {
+          params.set("sellerId", sellerFilter);
+        }
+
         const response = await fetch(
-          `/api/admin/reports?${new URLSearchParams({
-            startDate: rangeStart,
-            endDate: rangeEnd,
-            format,
-          })}`,
+          `/api/admin/reports?${params.toString()}`,
           { cache: "no-store" }
         );
         if (!response.ok) {
@@ -90,10 +107,18 @@ export function PointsReports() {
         if (format === "json") {
           setReport(await response.json());
         } else {
+          const sellerObj =
+            sellerFilter && sellerFilter !== "all"
+              ? report?.sellers.find((s) => s.id === sellerFilter)
+              : null;
+          const sellerTag = sellerObj
+            ? `-${sellerObj.name.replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, "_")}`
+            : "";
+
           const url = URL.createObjectURL(await response.blob());
           const link = document.createElement("a");
           link.href = url;
-          link.download = `YacellTech-puntos-${rangeStart}-a-${rangeEnd}.xlsx`;
+          link.download = `YacellTech${sellerTag}-puntos-${rangeStart}-a-${rangeEnd}.xlsx`;
           document.body.appendChild(link);
           link.click();
           link.remove();
@@ -106,7 +131,7 @@ export function PointsReports() {
         setBusy(null);
       }
     },
-    [startDate, endDate]
+    [startDate, endDate, selectedSellerId, report]
   );
 
   useEffect(() => {
@@ -261,6 +286,26 @@ export function PointsReports() {
             />
           </label>
 
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-secondary">
+            Vendedor a exportar
+            <select
+              value={selectedSellerId}
+              aria-label="Vendedor para exportar reporte"
+              onChange={(event) => {
+                setSelectedSellerId(event.target.value);
+                setExported(false);
+              }}
+              className="h-9 rounded-lg border border-separator bg-muted px-3 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="all">Todos los vendedores (Completo)</option>
+              {report?.sellers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.total.toLocaleString("es-DO")} pts)
+                </option>
+              ))}
+            </select>
+          </label>
+
           <Button
             type="button"
             variant="default"
@@ -280,15 +325,22 @@ export function PointsReports() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void generate("xlsx")}
+            onClick={() => void generate("xlsx", undefined, undefined, selectedSellerId)}
             disabled={Boolean(busy)}
+            title={
+              selectedSellerId === "all"
+                ? "Exportar reporte general completo de todos los vendedores"
+                : `Exportar reporte detallado día a día de ${report?.sellers.find((s) => s.id === selectedSellerId)?.name ?? "este vendedor"}`
+            }
           >
             {busy === "xlsx" ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Download className="h-3.5 w-3.5" />
             )}
-            Exportar Excel
+            {selectedSellerId === "all"
+              ? "Exportar Excel"
+              : `Exportar Excel (${report?.sellers.find((s) => s.id === selectedSellerId)?.name ?? "Vendedor"})`}
           </Button>
         </fieldset>
 
@@ -627,11 +679,25 @@ export function PointsReports() {
                           </div>
                         </div>
 
-                        <div className="text-right">
-                          <span className="text-[10px] text-secondary block font-medium">Total</span>
-                          <strong className="font-display text-lg font-bold tabular-nums text-accent">
-                            {seller.total.toLocaleString("es-DO")} pts
-                          </strong>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <span className="text-[10px] text-secondary block font-medium">Total</span>
+                            <strong className="font-display text-lg font-bold tabular-nums text-accent">
+                              {seller.total.toLocaleString("es-DO")} pts
+                            </strong>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2.5 text-xs gap-1.5"
+                            onClick={() => void generate("xlsx", undefined, undefined, seller.id)}
+                            disabled={Boolean(busy)}
+                            title={`Descargar Excel día a día de ${seller.name}`}
+                          >
+                            <Download className="h-3 w-3" />
+                            <span>Excel</span>
+                          </Button>
                         </div>
                       </div>
 

@@ -17,11 +17,21 @@ export async function GET(request: NextRequest) {
     if (!["json", "xlsx"].includes(format)) return NextResponse.json({ error: "Formato no permitido" }, { status: 400 });
     const report = await fetchPointsReport(parsed.data.startDate, parsed.data.endDate);
     if (format === "json") return NextResponse.json(report, { headers: { "Cache-Control": "private, no-store" } });
+    const sellerId = params.get("sellerId");
     const { createPointsReportExcel } = await import("@/lib/points-report-excel");
-    const buffer = await createPointsReportExcel(report);
+    const buffer = await createPointsReportExcel(report, sellerId);
+
+    const targetSeller =
+      sellerId && sellerId !== "all"
+        ? report.sellers.find((s) => s.id === sellerId)
+        : null;
+    const sellerTag = targetSeller
+      ? `-${targetSeller.name.replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, "_")}`
+      : "";
+
     return new NextResponse(new Uint8Array(buffer), { headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="YacellTech-puntos-${report.startDate}-a-${report.endDate}.xlsx"`,
+      "Content-Disposition": `attachment; filename="YacellTech${sellerTag}-puntos-${report.startDate}-a-${report.endDate}.xlsx"`,
       "Cache-Control": "private, no-store",
     } });
   } catch (error) {

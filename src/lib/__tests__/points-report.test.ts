@@ -60,4 +60,20 @@ describe("Reportes de puntos y Excel", () => {
     expect(book.getWorksheet("Movimientos")!.getCell("D5").value).toBe(-3);
     expect(daily.views[0]).toMatchObject({ state: "frozen", xSplit: 1, ySplit: 4 });
   });
+
+  it("exporta un XLSX dedicado para un solo vendedor con resumen, día a día y auditoría", async () => {
+    const report = buildPointsReport(fixture());
+    const sellerId = report.sellers[0]!.id;
+    const output = await createPointsReportExcel(report, sellerId);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(output);
+    expect(book.worksheets.map((sheet) => sheet.name)).toEqual(["Resumen", "Detalle diario", "Movimientos"]);
+    const summary = book.getWorksheet("Resumen")!;
+    expect(summary.getCell("B5").value).toBe("=1+1");
+    expect(summary.getCell("B8").value).toBe(17);
+    const daily = book.getWorksheet("Detalle diario")!;
+    expect(daily.getCell("A5").value).toEqual(new Date("2026-10-27T00:00:00Z"));
+    expect(daily.getCell("C5").value).toBe(17);
+    expect(daily.getCell("D5").value).toMatchObject({ result: 17 });
+  });
 });
