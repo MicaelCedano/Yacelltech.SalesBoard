@@ -2,9 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, BarChart3, CheckCircle2, Database, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, Sparkles, UserCheck, UserPlus } from "lucide-react";
+import { AlertCircle, BarChart3, CheckCircle2, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, UserCheck, UserPlus } from "lucide-react";
 import {
-  AuditLogEntry,
   DateFilterPreset,
   SalesBoardSnapshot,
   Seller,
@@ -13,7 +12,6 @@ import {
   addDaysToDateString,
   formatLongDateSantoDomingo,
   formatShortDateEs,
-  formatTimeSantoDomingo,
   getSantoDomingoToday,
 } from "@/lib/date-utils";
 import { broadcastBoardUpdate } from "@/hooks/use-salesboard-realtime";
@@ -65,7 +63,6 @@ export function AdminDashboard({
   const [isSavingDaily, setIsSavingDaily] = useState(false);
   const [isClosingMonth, setIsClosingMonth] = useState(false);
   const [showCloseMonthConfirm, setShowCloseMonthConfirm] = useState(false);
-  const [isPurgingHistory, setIsPurgingHistory] = useState(false);
   const [monthSnapshot, setMonthSnapshot] = useState<SalesBoardSnapshot>(initialSnapshot);
   const [dailyMode, setDailyMode] = useState<"add" | "set">("add");
   const [loadedDailyDate, setLoadedDailyDate] = useState<string | null>(null);
@@ -126,10 +123,6 @@ export function AdminDashboard({
   );
   const [isSavingManager, setIsSavingManager] = useState(false);
   const [isUploadingManagerPhoto, setIsUploadingManagerPhoto] = useState(false);
-
-  // Historial de Auditoría (Sección 10 / 12)
-  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
-  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
 
   // Notificaciones de estado
   const [toast, setToast] = useState<{
@@ -242,24 +235,6 @@ export function AdminDashboard({
     void loadHistoryRange();
   }, [loadHistoryRange]);
 
-  const loadAuditHistory = useCallback(async () => {
-    setIsLoadingAudit(true);
-    try {
-      const res = await fetch("/api/admin/audit", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = await res.json();
-      setAuditLogs(data.logs ?? []);
-    } finally {
-      setIsLoadingAudit(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "audit") {
-      void loadAuditHistory();
-    }
-  }, [activeTab, loadAuditHistory]);
-
   // Cálculo automático en vivo del total del Manager mientras el admin edita la tabla
   const liveManagerTotal = useMemo(() => {
     return rows.reduce((sum, r) => sum + (Number(r.units_sold) || 0) + (dailyMode === "add" ? Number(r.points_to_add) || 0 : 0), 0);
@@ -368,7 +343,6 @@ export function AdminDashboard({
         void loadMonthSnapshot();
       }
       void loadHistoryRange();
-      void loadAuditHistory();
       broadcastBoardUpdate();
 
       showNotification(
@@ -382,38 +356,6 @@ export function AdminDashboard({
       );
     } finally {
       setIsClosingMonth(false);
-    }
-  };
-
-  const handlePurgeTestHistory = async () => {
-    const ok = window.confirm(
-      "¿Estás seguro de que deseas eliminar permanentemente todas las ventas de prueba anteriores al 30 de octubre de 2026?\n\nSolo se conservarán los registros del 30 de octubre en adelante."
-    );
-    if (!ok) return;
-
-    try {
-      setIsPurgingHistory(true);
-      const res = await fetch("/api/admin/sales", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "purge_test_history", keep_from: "2026-10-30" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "No se pudo limpiar el historial");
-
-      void loadMonthSnapshot();
-      void loadHistoryRange();
-      void loadAuditHistory();
-      broadcastBoardUpdate();
-
-      showNotification(
-        "success",
-        `Historial de prueba eliminado correctamente (${data.deletedSalesCount ?? 0} registros borrados). Solo se conservan las ventas a partir del 30 de octubre.`
-      );
-    } catch (err) {
-      showNotification("error", err instanceof Error ? err.message : "Error al limpiar el historial");
-    } finally {
-      setIsPurgingHistory(false);
     }
   };
 
@@ -605,36 +547,6 @@ export function AdminDashboard({
     }
   };
 
-  const handleInitializeDemo = async (
-    preset: "daily_34_of_50" | "high_volume_350"
-  ) => {
-    try {
-      const res = await fetch("/api/admin/demo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preset }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error ?? "No se pudo inicializar la demostración");
-      }
-      setSelectedDate(todaySantoDomingo);
-      await loadDailyData(todaySantoDomingo);
-      void loadHistoryRange();
-      void loadAuditHistory();
-      broadcastBoardUpdate();
-      showNotification(
-        "success",
-        "Datos de demostración (5 vendedores: Luis, José, Carlos, Ana y María) cargados correctamente."
-      );
-    } catch (err) {
-      showNotification(
-        "error",
-        err instanceof Error ? err.message : "Error al cargar demostración"
-      );
-    }
-  };
-
   return (
     <div className="admin-shell">
       {toast && (
@@ -655,12 +567,16 @@ export function AdminDashboard({
         </div>
         <nav className="admin-nav" aria-label="Secciones administrativas">
           {([
-            ["daily", "Registro diario"], ["reports", "Reportes / Excel"], ["sellers", "Vendedores"], ["goals", "Metas"], ["manager", "Manager General"], ["audit", "Historial"],
+            ["daily", "Registro diario"],
+            ["audit", "Historial"],
+            ["sellers", "Vendedores"],
+            ["goals", "Metas"],
+            ["manager", "Manager General"],
           ] as const).map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? "page" : undefined}>{label}</button>)}
         </nav>
       </header>
       <main className="admin-main space-y-6">
-        {activeTab === "reports" && <PointsReports />}
+        {(activeTab === "reports" || activeTab === "audit") && <PointsReports />}
         {activeTab === "goals" && (
           <section className="mx-auto max-w-3xl rounded-2xl border border-separator bg-surface p-6 space-y-5">
             <div><h1 className="font-display text-xl font-semibold">Metas</h1><p className="mt-2 text-sm text-secondary">Configura las metas mensuales de los vendedores y del supervisor. Cada objetivo es independiente.</p></div>
@@ -1360,168 +1276,6 @@ export function AdminDashboard({
                 </Button>
               </div>
             </fieldset></form>
-          </div>
-        )}
-
-        {/* ===================================================================
-            PESTAÑA 4: HISTORIAL COMPLETO SIN EXCEL, AUDITORÍA Y DEMOSTRACIÓN
-           =================================================================== */}
-        {activeTab === "audit" && (
-          <div className="space-y-6">
-            {/* Historial completo por persona y día (sin necesidad de Excel, conservando botón de exportar Excel) */}
-            <PointsReports />
-
-            {/* Herramientas de sistema y auditoría técnica (colapsadas para mantener el historial limpio y simplificado) */}
-            <details className="rounded-2xl border border-separator bg-surface p-5 shadow-subtle group">
-              <summary className="cursor-pointer text-xs font-semibold text-secondary flex items-center justify-between select-none hover:text-foreground">
-                <span>Herramientas avanzadas del sistema y auditoría técnica</span>
-                <span className="text-[11px] underline">Mostrar / Ocultar</span>
-              </summary>
-              <div className="mt-5 space-y-6 pt-4 border-t border-separator">
-                {/* Limpieza de datos de prueba anteriores al 30 de octubre */}
-                <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <h3 className="font-display text-lg font-medium text-foreground">
-                        Limpiar historial de pruebas
-                      </h3>
-                      <p className="mt-1 text-xs text-secondary max-w-2xl">
-                        Elimina permanentemente todas las ventas de prueba previas al <strong>30 de octubre de 2026</strong>. Solo se conservará el historial del 30 de octubre en adelante.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isPurgingHistory}
-                      onClick={handlePurgeTestHistory}
-                      className="inline-flex items-center justify-center rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-rose-500 disabled:opacity-50 transition-colors shrink-0"
-                    >
-                      {isPurgingHistory ? "Eliminando pruebas…" : "Borrar pruebas anteriores al 30 de oct"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Inicializador Explícito y Seguro de Datos de Demostración (Sección 13) */}
-                <div className="rounded-2xl border border-separator bg-surface p-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-0.5 text-[11px] font-medium text-warning-text">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Inicialización Explícita de Demostración
-                      </span>
-                      <h3 className="mt-1 font-display text-lg font-medium text-foreground">
-                        Cargar los 5 vendedores de prueba (Carlos, Ana, Luis, María y José)
-                      </h3>
-                      <p className="mt-1 text-xs text-secondary max-w-2xl">
-                        Método seguro de inicialización: verifica que no existan vendedores reales de producción antes de cargar los datos ficticios.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => handleInitializeDemo("daily_34_of_50")}
-                      >
-                        <Database className="h-4 w-4 text-secondary" />
-                        <span>Demo Meta 50 (34 puntos / 68%)</span>
-                      </Button>
-
-                      <Button
-                        type="button"
-                        variant="default"
-                        onClick={() => handleInitializeDemo("high_volume_350")}
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        <span>Demo Escala Alta (Luis 350, José 250...)</span>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Historial de Auditoría */}
-                <div className="rounded-2xl border border-separator bg-surface p-5 shadow-subtle">
-                  <div className="flex items-center justify-between border-b border-separator pb-4 mb-4">
-                    <div>
-                      <h3 className="font-display text-lg font-medium text-foreground">
-                        Historial de cambios técnicos
-                      </h3>
-                      <p className="text-xs text-secondary">
-                        Registro inmutable de quién modificó las estadísticas, fecha, hora y valores anteriores vs nuevos.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={loadAuditHistory}
-                      disabled={isLoadingAudit}
-                    >
-                      <RefreshCw
-                        className={cn(
-                          "h-3.5 w-3.5",
-                          isLoadingAudit && "animate-spin"
-                        )}
-                      />
-                      <span>Actualizar</span>
-                    </Button>
-                  </div>
-
-                  {auditLogs.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-secondary">
-                      No hay registros de auditoría disponibles.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {auditLogs.map((log) => (
-                        <div
-                          key={log.id}
-                          className="rounded-xl border border-separator bg-muted p-4 text-xs"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-separator pb-2 mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="rounded bg-accent-soft px-2 py-0.5 font-medium text-secondary">
-                                {log.action_type}
-                              </span>
-                              <span className="text-secondary font-semibold">
-                                Responsable: {log.actor_email}
-                              </span>
-                              {log.sale_date && (
-                                <span className="rounded bg-muted px-2 py-0.5 text-foreground">
-                                  Fecha ventas: {log.sale_date}
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-secondary tabular-nums">
-                              {formatShortDateEs(log.created_at.slice(0, 10))} •{" "}
-                              {formatTimeSantoDomingo(log.created_at)}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <div className="rounded-lg bg-surface p-2.5">
-                              <span className="block text-[10px] font-medium text-secondary mb-1">
-                                Valores Anteriores
-                              </span>
-                              <pre className="overflow-x-auto text-[11px] text-secondary">
-                                {JSON.stringify(log.previous_values, null, 2)}
-                              </pre>
-                            </div>
-                            <div className="rounded-lg bg-surface p-2.5">
-                              <span className="block text-[10px] font-medium text-success-text mb-1">
-                                Valores Nuevos
-                              </span>
-                              <pre className="overflow-x-auto text-[11px] text-success-text">
-                                {JSON.stringify(log.new_values, null, 2)}
-                              </pre>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </details>
           </div>
         )}
       </main>
