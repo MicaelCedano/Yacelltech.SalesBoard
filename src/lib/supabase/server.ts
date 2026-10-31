@@ -5,7 +5,7 @@ import { getSupabaseConfig } from "@/lib/supabase/env";
 export async function getSupabaseServerClient() {
   const { url, anonKey, isConfigured } = getSupabaseConfig();
   if (!isConfigured) {
-    if (process.env.NODE_ENV === "production") {
+    if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_ENABLE_DEMO_FALLBACK !== "true") {
       throw new Error("Configura Supabase antes de publicar SalesBoard. El modo de demostración solo está disponible localmente.");
     }
     return null;
