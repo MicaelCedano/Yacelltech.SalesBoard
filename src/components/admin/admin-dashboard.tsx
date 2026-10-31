@@ -124,6 +124,47 @@ export function AdminDashboard({
   const [isSavingManager, setIsSavingManager] = useState(false);
   const [isUploadingManagerPhoto, setIsUploadingManagerPhoto] = useState(false);
 
+  // Formatear valor monetario del premio con separador de miles (comas) en tiempo real
+  const handlePrizeValueChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const input = event.target;
+      const rawVal = input.value;
+      const cursor = input.selectionStart ?? rawVal.length;
+      const digitsToRight = rawVal.slice(cursor).replace(/\D/g, "").length;
+
+      const digitsOnly = rawVal.replace(/\D/g, "");
+      if (!digitsOnly) {
+        setMonthlySellerPrizeValue("");
+        return;
+      }
+
+      const num = Math.min(Number(digitsOnly), 100_000_000);
+      setMonthlySellerPrizeValue(num);
+
+      requestAnimationFrame(() => {
+        const formatted = num.toLocaleString("es-DO");
+        let remaining = digitsToRight;
+        let newCursor = formatted.length;
+        for (let i = formatted.length - 1; i >= 0; i--) {
+          if (remaining === 0) {
+            newCursor = i + 1;
+            break;
+          }
+          const char = formatted[i];
+          if (char && /\d/.test(char)) {
+            remaining--;
+            if (remaining === 0) {
+              newCursor = i;
+              break;
+            }
+          }
+        }
+        input.setSelectionRange(newCursor, newCursor);
+      });
+    },
+    []
+  );
+
   // Notificaciones de estado
   const [toast, setToast] = useState<{
     type: "success" | "error";
@@ -507,7 +548,10 @@ export function AdminDashboard({
           default_monthly_seller_goal: Number(defaultMonthlySellerGoal) || 0,
           default_monthly_manager_goal: Number(defaultMonthlyManagerGoal) || 0,
           monthly_seller_prize_name: monthlySellerPrizeName.trim(),
-          monthly_seller_prize_value: Number(monthlySellerPrizeValue) || 0,
+          monthly_seller_prize_value:
+            typeof monthlySellerPrizeValue === "number"
+              ? Math.max(0, Math.floor(monthlySellerPrizeValue))
+              : (Number(String(monthlySellerPrizeValue).replace(/\D/g, "")) || 0),
           expected_version: snapshot.settings.version,
         } : {
           store_name: storeName.trim() || "YACELLTECH",
@@ -528,6 +572,15 @@ export function AdminDashboard({
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error ?? "No se pudo guardar la configuración");
+      }
+
+      if (data.settings && scope === "goals") {
+        setMonthlySellerPrizeName(data.settings.monthly_seller_prize_name ?? "");
+        setMonthlySellerPrizeValue(
+          (data.settings.monthly_seller_prize_value ?? 0) > 0
+            ? data.settings.monthly_seller_prize_value
+            : ""
+        );
       }
 
       await loadDailyData(selectedDate);
@@ -606,7 +659,26 @@ export function AdminDashboard({
                     </div>
                     <div>
                       <label htmlFor="monthly-seller-prize-value" className="mb-2 block text-sm font-semibold">Precio / Valor del premio (RD$)</label>
-                      <Input id="monthly-seller-prize-value" aria-label="Valor del premio en RD$" type="number" min={0} max={100000000} step={1} placeholder="Ej. 5000" value={monthlySellerPrizeValue} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setMonthlySellerPrizeValue(event.target.value === "" ? "" : Number(event.target.value))} />
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-sm font-semibold text-secondary">
+                          RD$
+                        </span>
+                        <Input
+                          id="monthly-seller-prize-value"
+                          aria-label="Valor del premio en RD$"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="Ej. 5,000"
+                          className="pl-14 tabular-nums"
+                          value={
+                            monthlySellerPrizeValue === ""
+                              ? ""
+                              : monthlySellerPrizeValue.toLocaleString("es-DO")
+                          }
+                          onFocus={(event) => event.currentTarget.select()}
+                          onChange={handlePrizeValueChange}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -710,7 +782,7 @@ export function AdminDashboard({
             <section className="admin-summary" aria-label="Resumen diario de la tienda">
               <div><p className="admin-summary-label">Fecha</p><p className="admin-summary-date">{formatLongDateSantoDomingo(selectedDate)}</p><p className="text-xs text-secondary mt-1">Acumulado mes en pantalla: <strong>{monthSnapshot.manager.totalUnitsSold.toLocaleString("es-DO")} pts</strong></p></div>
               <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados ({selectedDate === todaySantoDomingo ? "Hoy" : formatShortDateEs(selectedDate)})</p></div>
-              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p>{(Boolean((snapshot.settings.monthly_seller_prize_name ?? "").trim()) || (snapshot.settings.monthly_seller_prize_value ?? 0) > 0) && <p className="text-xs text-foreground mt-1">Premio: <strong>{(snapshot.settings.monthly_seller_prize_name ?? "").trim() || "Premio por meta cumplida"}</strong>{(snapshot.settings.monthly_seller_prize_value ?? 0) > 0 ? ` · RD$${(snapshot.settings.monthly_seller_prize_value ?? 0).toLocaleString("es-DO")}` : ""}</p>}<p className="text-xs text-secondary mt-2">Meta mensual del Manager: {(snapshot.settings.default_monthly_manager_goal ?? 1000).toLocaleString("es-DO")} puntos</p></div>
+              <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p>{(Boolean((snapshot.settings.monthly_seller_prize_name ?? "").trim()) || (snapshot.settings.monthly_seller_prize_value ?? 0) > 0) && <p className="text-xs text-foreground mt-1">Premio: <strong>{(snapshot.settings.monthly_seller_prize_name ?? "").trim() || "Premio por meta cumplida"}</strong>{(snapshot.settings.monthly_seller_prize_value ?? 0) > 0 ? ` · RD$ ${(snapshot.settings.monthly_seller_prize_value ?? 0).toLocaleString("es-DO")}` : ""}</p>}<p className="text-xs text-secondary mt-2">Meta mensual del Manager: {(snapshot.settings.default_monthly_manager_goal ?? 1000).toLocaleString("es-DO")} puntos</p></div>
             </section>
 
             {/* Tabla Editable de Registro Diario (Sección 7.1) */}

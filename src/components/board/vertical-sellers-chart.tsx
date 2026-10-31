@@ -110,12 +110,12 @@ export function VerticalSellersChart({
                           <div
                             className="seller-prize-tag"
                             data-complete={item.isGoalCompleted}
-                            title={cleanPrizeName ? `${cleanPrizeName}${cleanPrizeValue > 0 ? ` · RD$${cleanPrizeValue.toLocaleString("es-DO")}` : ""}` : `Premio: RD$${cleanPrizeValue.toLocaleString("es-DO")}`}
+                            title={cleanPrizeName ? `${cleanPrizeName}${cleanPrizeValue > 0 ? ` · RD$ ${cleanPrizeValue.toLocaleString("es-DO")}` : ""}` : `Premio: RD$ ${cleanPrizeValue.toLocaleString("es-DO")}`}
                           >
                             <span className="seller-prize-pill">
                               <Trophy size={11} strokeWidth={2.2} aria-hidden="true" />
                               {cleanPrizeValue > 0 ? (
-                                <strong>RD${cleanPrizeValue.toLocaleString("es-DO")}</strong>
+                                <strong>RD$ {cleanPrizeValue.toLocaleString("es-DO")}</strong>
                               ) : (
                                 <strong>Premio</strong>
                               )}
