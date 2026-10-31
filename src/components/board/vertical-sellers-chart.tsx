@@ -84,7 +84,7 @@ export function VerticalSellersChart({
                       <motion.div
                         className="seller-bar-label"
                         initial={false}
-                        animate={{ bottom: `${item.barHeightPercent}%` }}
+                        animate={{ bottom: `max(${item.barHeightPercent}%, 46px)` }}
                         transition={{ duration: reducedMotion ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }}
                       >
                         <AnimatedNumber className="seller-units" value={item.unitsSold} staticDisplay={staticDisplay} />
