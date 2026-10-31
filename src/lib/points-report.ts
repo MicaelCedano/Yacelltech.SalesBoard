@@ -118,7 +118,14 @@ export function buildPointsReport(input: {
   }
   movements.sort((a, b) => a.date.localeCompare(b.date) || a.appliedAt.localeCompare(b.appliedAt) || a.sellerName.localeCompare(b.sellerName, "es"));
   return { startDate, endDate, storeName: input.storeName, generatedAt: new Date().toISOString(),
-    sellers: sellers.map((seller) => ({ id: seller.id, name: seller.full_name, active: seller.is_active, total: totals.get(seller.id) ?? 0 })),
+    sellers: sellers.map((seller) => ({
+      id: seller.id,
+      name: seller.full_name,
+      active: seller.is_active,
+      total: totals.get(seller.id) ?? 0,
+      avatar_url: seller.avatar_url ?? null,
+      bar_color: seller.bar_color ?? null,
+    })),
     days, movements, closures, total: days.reduce((sum, day) => sum + day.total, 0),
   };
 }

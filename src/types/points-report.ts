@@ -22,7 +22,14 @@ export interface PointsReport {
   storeName: string;
   generatedAt: string;
   total: number;
-  sellers: { id: string; name: string; active: boolean; total: number }[];
+  sellers: {
+    id: string;
+    name: string;
+    active: boolean;
+    total: number;
+    avatar_url?: string | null;
+    bar_color?: string | null;
+  }[];
   days: { date: string; points: Record<string, number | null>; total: number }[];
   movements: {
     date: string; sellerId: string; sellerName: string; type: string;
