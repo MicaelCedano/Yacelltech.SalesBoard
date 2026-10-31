@@ -53,6 +53,7 @@ export function VerticalSellersChart({
                   className="seller-column"
                   data-seller-id={item.seller.id}
                   data-rank={item.rank}
+                  data-units={item.unitsSold}
                   aria-label={`${item.seller.full_name}: ${item.unitsSold} ${item.unitsSold === 1 ? "punto" : "puntos"}${item.rank ? `, posición ${item.rank}` : ""}`}
                 >
                   <div className="seller-identity">
@@ -89,6 +90,11 @@ export function VerticalSellersChart({
                         <AnimatedNumber className="seller-units" value={item.unitsSold} staticDisplay={staticDisplay} />
                         <span className="seller-unit-label">{item.unitsSold === 1 ? "Punto" : "Puntos"}</span>
                       </motion.div>
+                      {item.effectiveGoal > 0 && (
+                        <span className="seller-bar-goal">
+                          Meta: {item.effectiveGoal.toLocaleString("es-DO")} puntos
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="seller-stats">
@@ -99,26 +105,6 @@ export function VerticalSellersChart({
                           <AnimatedNumber value={item.goalCompletionPercent} staticDisplay={staticDisplay} />
                           <span>%</span>
                           <small>de meta</small>
-                        </div>
-                        <div
-                          className="seller-goal-track"
-                          role="progressbar"
-                          aria-label={`Meta de ${item.seller.full_name}`}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-valuenow={Math.min(100, item.goalCompletionPercent)}
-                          aria-valuetext={`${item.unitsSold} de ${item.effectiveGoal} puntos · ${item.goalCompletionPercent}%`}
-                        >
-                          <motion.div
-                            className="seller-goal-fill"
-                            initial={false}
-                            animate={{ width: `${Math.min(100, item.goalCompletionPercent)}%` }}
-                            transition={{ duration: reducedMotion ? 0 : 0.4 }}
-                            data-complete={item.isGoalCompleted}
-                          />
-                          <span className="seller-goal-text">
-                            Meta: {item.effectiveGoal.toLocaleString("es-DO")} puntos
-                          </span>
                         </div>
                         {hasPrize && (
                           <div
