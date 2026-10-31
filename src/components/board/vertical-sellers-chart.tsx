@@ -10,7 +10,6 @@ export function VerticalSellersChart({
   sellers,
   title = "Ranking de puntos",
   staticDisplay = false,
-  goalMonths = 1,
   prizeName,
   prizeValue,
 }: {
@@ -101,9 +100,6 @@ export function VerticalSellersChart({
                           <span>%</span>
                           <small>de meta</small>
                         </div>
-                        <p className="seller-meta-label">
-                          {goalMonths > 1 ? `Meta de ${goalMonths} meses` : "Meta mensual"} {item.effectiveGoal.toLocaleString("es-DO")} puntos
-                        </p>
                         <div
                           className="seller-goal-track"
                           role="progressbar"
@@ -114,11 +110,15 @@ export function VerticalSellersChart({
                           aria-valuetext={`${item.unitsSold} de ${item.effectiveGoal} puntos · ${item.goalCompletionPercent}%`}
                         >
                           <motion.div
+                            className="seller-goal-fill"
                             initial={false}
                             animate={{ width: `${Math.min(100, item.goalCompletionPercent)}%` }}
                             transition={{ duration: reducedMotion ? 0 : 0.4 }}
                             data-complete={item.isGoalCompleted}
                           />
+                          <span className="seller-goal-text">
+                            Meta: {item.effectiveGoal.toLocaleString("es-DO")} puntos
+                          </span>
                         </div>
                         {hasPrize && (
                           <div
@@ -141,7 +141,7 @@ export function VerticalSellersChart({
                         )}
                       </>
                     ) : (
-                      <p className="seller-meta-label">Sin meta configurada</p>
+                      <p className="seller-no-goal">Sin meta configurada</p>
                     )}
                   </div>
                 </motion.article>
