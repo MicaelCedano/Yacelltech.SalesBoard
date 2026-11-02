@@ -121,14 +121,6 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .seller-column[data-rank="1"] { --seller-color: var(--chart-leader); }
 .seller-columns[data-count="1"] { max-width: 540px; }
 .seller-columns[data-count="2"] { max-width: 1000px; }
-.seller-columns[data-count="8"] .seller-identity .h-16,
-.seller-columns[data-count="9"] .seller-identity .h-16,
-.seller-columns[data-count="10"] .seller-identity .h-16,
-.seller-columns[data-count="11"] .seller-identity .h-16,
-.seller-columns[data-count="12"] .seller-identity .h-16 {
-  height: clamp(68px, 6.2vw, 88px);
-  width: clamp(68px, 6.2vw, 88px);
-}
 
 .seller-identity { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; padding: 6px 12px 8px; min-width: 0; }
 .seller-identity .h-16 { height: 96px; width: 96px; }
@@ -356,7 +348,6 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .seller-columns { min-height: 0; width: 100%; }
   .seller-column { min-width: 0; grid-template-rows: clamp(140px, 20vh, 184px) minmax(80px, 1fr) auto; }
   .seller-identity { padding: 4px 6px 6px; }
-  .seller-identity .h-16 { height: clamp(68px, 6.5vw, 92px); width: clamp(68px, 6.5vw, 92px); }
   .seller-name { margin-top: 6px; }
   .seller-name h2 { font-size: clamp(15px, 1.25vw, 22px); }
   .seller-rank { min-height: 22px; font-size: clamp(10px, .8vw, 12px); padding: 2px 7px; margin-top: 3px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
