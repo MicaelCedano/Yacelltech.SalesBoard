@@ -213,10 +213,107 @@ export async function saveBatchDailySales(
 ): Promise<{ snapshot: SalesBoardSnapshot; updatedCount: number }> {
   const nowIso = new Date().toISOString();
   const requestId = input.request_id ?? crypto.randomUUID();
-  const operation = { sale_date: input.sale_date, general_goal: input.general_goal ?? 0, mode: input.mode, entries: input.entries };
+  const operation = {
+    sale_date: input.sale_date,
+    general_goal: input.general_goal ?? 0,
+    mode: input.mode,
+    entries: input.entries,
+    invoices: input.invoices,
+  };
   const supabase = await getSupabaseServerClient();
 
   if (supabase) {
+    if (input.mode === "return") {
+      let executedViaRpc = false;
+      let rpcCount = 0;
+      try {
+        const { data, error } = await supabase.rpc("apply_daily_points", {
+          p_request_id: requestId,
+          p_sale_date: input.sale_date,
+          p_general_goal: input.general_goal ?? 0,
+          p_entries: input.entries,
+          p_mode: input.mode,
+        });
+        if (!error) {
+          executedViaRpc = true;
+          rpcCount = Number(data?.updatedCount ?? 0);
+        }
+      } catch {
+        executedViaRpc = false;
+      }
+
+      if (executedViaRpc) {
+        if (input.invoices && input.invoices.length > 0) {
+          await supabase.from("audit_logs").update({
+            new_values: {
+              request: operation,
+              invoices: input.invoices,
+              sellers: input.entries,
+            },
+          }).eq("id", requestId);
+        }
+        const snapshot = await fetchSalesBoardSnapshot({
+          preset: "custom", customStart: input.sale_date, customEnd: input.sale_date,
+        });
+        return { snapshot, updatedCount: rpcCount };
+      }
+
+      // Fallback directo para devolución en Supabase
+      const auditBefore: { seller_id: string; seller_name: string; units_sold: number }[] = [];
+      const auditAfter: { seller_id: string; seller_name: string; units_sold: number }[] = [];
+      let count = 0;
+
+      for (const entry of input.entries) {
+        const { data: sellerRow } = await supabase.from("sellers").select("*").eq("id", entry.seller_id).single();
+        if (!sellerRow) throw new Error("Vendedor no encontrado");
+
+        const { data: saleRow } = await supabase
+          .from("daily_sales")
+          .select("*")
+          .eq("seller_id", entry.seller_id)
+          .eq("sale_date", input.sale_date)
+          .maybeSingle();
+
+        const prevUnits = (saleRow as DailySaleRecord | null)?.units_sold ?? 0;
+        if (prevUnits < entry.units_sold) {
+          throw new Error(`No se puede aplicar la devolución: el vendedor ${sellerRow.full_name} solo tiene ${prevUnits} punto(s) en esta fecha y se intentan descontar ${entry.units_sold}.`);
+        }
+        const nextUnits = prevUnits - entry.units_sold;
+
+        auditBefore.push({ seller_id: sellerRow.id, seller_name: sellerRow.full_name, units_sold: prevUnits });
+        auditAfter.push({ seller_id: sellerRow.id, seller_name: sellerRow.full_name, units_sold: nextUnits });
+
+        const { error: upsertErr } = await supabase.from("daily_sales").upsert({
+          seller_id: entry.seller_id,
+          sale_date: input.sale_date,
+          units_sold: nextUnits,
+          individual_goal_snapshot: 0,
+          version: ((saleRow as DailySaleRecord | null)?.version ?? 0) + 1,
+          updated_by: actor.userId,
+          updated_at: nowIso,
+        }, { onConflict: "seller_id,sale_date" });
+        if (upsertErr) throw new Error(upsertErr.message);
+        count++;
+      }
+
+      await supabase.from("audit_logs").insert({
+        id: requestId,
+        actor_id: actor.userId,
+        actor_email: actor.email,
+        action_type: "POINTS_RETURN",
+        entity_type: "daily_sales",
+        entity_id: input.sale_date,
+        sale_date: input.sale_date,
+        previous_values: { sellers: auditBefore },
+        new_values: { sellers: auditAfter, request: operation, invoices: input.invoices },
+      });
+
+      const snapshot = await fetchSalesBoardSnapshot({
+        preset: "custom", customStart: input.sale_date, customEnd: input.sale_date,
+      });
+      return { snapshot, updatedCount: count };
+    }
+
     const { data, error } = await supabase.rpc("apply_daily_points", {
       p_request_id: requestId, p_sale_date: input.sale_date,
       p_general_goal: input.general_goal ?? 0, p_entries: input.entries, p_mode: input.mode,
@@ -243,9 +340,19 @@ export async function saveBatchDailySales(
       sellers: demoDb.sellers,
       updates: input.entries.map((entry) => {
         const previous = demoDb.dailySales.find((sale) => sale.seller_id === entry.seller_id && sale.sale_date === input.sale_date);
-        const total = input.mode === "add" ? (previous?.units_sold ?? 0) + entry.units_sold : entry.units_sold;
+        let total = entry.units_sold;
+        if (input.mode === "add") {
+          total = (previous?.units_sold ?? 0) + entry.units_sold;
+        } else if (input.mode === "return") {
+          const prev = previous?.units_sold ?? 0;
+          if (prev < entry.units_sold) {
+            const seller = demoDb.sellers.find((s) => s.id === entry.seller_id);
+            throw new Error(`No se puede aplicar la devolución: el vendedor ${seller?.full_name ?? entry.seller_id} solo tiene ${prev} punto(s) en esta fecha y se intentan descontar ${entry.units_sold}.`);
+          }
+          total = prev - entry.units_sold;
+        }
         if (total > 100000) throw new Error("El total diario no puede exceder 100000 puntos");
-        return { seller_id: entry.seller_id, units_sold: total, expected_version: input.mode === "add" ? undefined : entry.expected_version };
+        return { seller_id: entry.seller_id, units_sold: total, expected_version: input.mode === "set" ? entry.expected_version : undefined };
       }),
       actorId: actor.userId,
       nowIso,
@@ -260,7 +367,7 @@ export async function saveBatchDailySales(
     id: requestId,
     actor_id: actor.userId,
     actor_email: actor.email,
-    action_type: "BATCH_DAILY_SALES_UPDATE",
+    action_type: input.mode === "return" ? "POINTS_RETURN" : "BATCH_DAILY_SALES_UPDATE",
     entity_type: "daily_sales",
     entity_id: input.sale_date,
     sale_date: input.sale_date,
@@ -272,6 +379,7 @@ export async function saveBatchDailySales(
     },
     new_values: {
       request: operation,
+      invoices: input.invoices,
       sellers: auditDiffs.map((d) => ({
         seller_id: d.seller_id, seller_name: d.seller_name,
         units_sold: d.new_units,

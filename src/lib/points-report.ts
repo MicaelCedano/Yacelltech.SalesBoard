@@ -89,7 +89,7 @@ export function buildPointsReport(input: {
   });
   const movements: PointsReport["movements"] = [];
   for (const log of input.logs) {
-    if (!log.sale_date || log.sale_date < startDate || log.sale_date > endDate || log.action_type !== "BATCH_DAILY_SALES_UPDATE") continue;
+    if (!log.sale_date || log.sale_date < startDate || log.sale_date > endDate || (log.action_type !== "BATCH_DAILY_SALES_UPDATE" && log.action_type !== "POINTS_RETURN")) continue;
     const normalize = (values: Record<string, unknown> | null) => {
       const raw = values?.sellers ?? values?.changes;
       if (!Array.isArray(raw)) return [];
@@ -104,15 +104,24 @@ export function buildPointsReport(input: {
       });
     };
     const before = new Map(normalize(log.previous_values).map((row) => [row.id, row.units]));
-    const request = log.new_values?.request as { mode?: string } | undefined;
+    const request = log.new_values?.request as { mode?: string; invoices?: string[] } | undefined;
+    const rawInvoices = (log.new_values?.invoices as unknown) ?? request?.invoices;
+    const invoices = Array.isArray(rawInvoices)
+      ? rawInvoices.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [];
+    const isReturn = request?.mode === "return" || log.action_type === "POINTS_RETURN";
+    const invoiceLabel = invoices.length > 0
+      ? ` (Factura${invoices.length > 1 ? "s" : ""}: ${invoices.join(", ")})`
+      : "";
     for (const next of normalize(log.new_values)) {
       const previous = before.get(next.id);
       if (previous === undefined || previous === next.units) continue;
       movements.push({ date: log.sale_date, sellerId: next.id,
         sellerName: next.name || sellerById.get(next.id)?.full_name || next.id,
-        type: request?.mode === "add" ? "Suma" : request?.mode === "set" ? "Corrección" : "Actualización anterior",
+        type: isReturn ? `Devolución${invoiceLabel}` : request?.mode === "add" ? "Suma" : request?.mode === "set" ? "Corrección" : "Actualización anterior",
         points: next.units - previous, previous, total: next.units,
         appliedAt: log.created_at, appliedBy: log.actor_email,
+        invoices: invoices.length > 0 ? invoices : undefined,
       });
     }
   }

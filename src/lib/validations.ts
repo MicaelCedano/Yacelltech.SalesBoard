@@ -43,15 +43,18 @@ export const dailySaleItemInputSchema = z.object({
 
 export const batchSaveDailySalesSchema = z.object({
   request_id: z.string().uuid().optional(),
-  mode: z.enum(["add", "set"]).default("set"),
+  mode: z.enum(["add", "set", "return"]).default("set"),
   sale_date: dateStringSchema,
   general_goal: nonNegativeIntSchema.optional(),
+  invoices: z.array(z.string().trim().min(1)).optional(),
   entries: z
     .array(dailySaleItemInputSchema)
     .min(1, "Debe incluir al menos un vendedor para guardar")
     .max(500)
     .refine((entries) => new Set(entries.map((entry) => entry.seller_id)).size === entries.length, "Hay vendedores duplicados"),
-}).refine((input) => input.mode !== "add" || Boolean(input.request_id), "La suma necesita un identificador de operación");
+}).refine((input) => input.mode !== "add" || Boolean(input.request_id), "La suma necesita un identificador de operación")
+  .refine((input) => input.mode !== "return" || (Array.isArray(input.invoices) && input.invoices.length > 0), "Debes ingresar al menos un número de factura para la devolución")
+  .refine((input) => input.mode !== "return" || (input.entries.length === 1 && input.entries[0]?.units_sold === input.invoices?.length), "En la devolución se descuenta exactamente 1 punto por cada número de factura ingresado");
 
 export const pointsReportRangeSchema = z.object({
   startDate: dateStringSchema,

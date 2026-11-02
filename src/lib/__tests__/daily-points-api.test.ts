@@ -145,4 +145,69 @@ describe("Permisos, validación y sumas locales", () => {
     const yesterdayRow = report.days.find((d: { date: string }) => d.date === yesterday);
     expect(yesterdayRow?.total).toBe(59);
   });
+
+  it("aplica devolución de puntos descontando 1 punto por cada número de factura", async () => {
+    const db = readDemoDatabase();
+    const seller = db.sellers[0]!;
+    const date = getSantoDomingoToday();
+
+    const addRes = await POST(
+      new NextRequest("http://localhost/api/admin/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          mode: "set",
+          sale_date: date,
+          entries: [{ seller_id: seller.id, units_sold: 5 }],
+        }),
+      })
+    );
+    expect(addRes.status).toBe(200);
+
+    const returnRes = await POST(
+      new NextRequest("http://localhost/api/admin/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          mode: "return",
+          sale_date: date,
+          invoices: ["B0100004562", "B0100004563"],
+          entries: [{ seller_id: seller.id, units_sold: 2 }],
+        }),
+      })
+    );
+    expect(returnRes.status).toBe(200);
+    const returnData = await returnRes.json();
+    const sellerRow = returnData.snapshot.allSellersAdminTable.find((s: { seller: { id: string } }) => s.seller.id === seller.id);
+    expect(sellerRow.unitsSold).toBe(3);
+
+    const reportRes = await GET(
+      new NextRequest(`http://localhost/api/admin/reports?startDate=${date}&endDate=${date}`)
+    );
+    expect(reportRes.status).toBe(200);
+    const report = await reportRes.json();
+    expect(report.movements).toContainEqual(
+      expect.objectContaining({
+        sellerId: seller.id,
+        points: -2,
+        type: "Devolución (Facturas: B0100004562, B0100004563)",
+      })
+    );
+
+    const excessReturn = await POST(
+      new NextRequest("http://localhost/api/admin/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          mode: "return",
+          sale_date: date,
+          invoices: ["F1", "F2", "F3", "F4"],
+          entries: [{ seller_id: seller.id, units_sold: 4 }],
+        }),
+      })
+    );
+    expect(excessReturn.status).toBe(500);
+    const excessErr = await excessReturn.json();
+    expect(excessErr.error).toContain("No se puede aplicar la devolución");
+  });
 });

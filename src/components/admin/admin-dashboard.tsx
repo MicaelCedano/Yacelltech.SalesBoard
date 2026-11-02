@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, BarChart3, CheckCircle2, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, UserCheck, UserPlus } from "lucide-react";
+import { AlertCircle, BarChart3, CheckCircle2, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, UserCheck, UserPlus, X } from "lucide-react";
 import {
   DateFilterPreset,
   SalesBoardSnapshot,
@@ -70,6 +70,16 @@ export function AdminDashboard({
   const dailySaveRef = useRef(false);
   const dailyLoadRef = useRef(0);
   const dailyRequestRef = useRef<{ request_id: string; mode: "add" | "set"; sale_date: string; entries: { seller_id: string; units_sold: number; expected_version: number }[] } | null>(null);
+
+  // Estado del Modal de Devolución de Puntos por Número de Factura
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnSellerId, setReturnSellerId] = useState<string>("");
+  const [returnDate, setReturnDate] = useState<string>(todaySantoDomingo);
+  const [returnInvoices, setReturnInvoices] = useState<string[]>([]);
+  const [returnInvoiceInput, setReturnInvoiceInput] = useState<string>("");
+  const [returnSellerPoints, setReturnSellerPoints] = useState<number | null>(null);
+  const [isApplyingReturn, setIsApplyingReturn] = useState(false);
+  const [returnError, setReturnError] = useState<string>("");
 
   // Filtro de consulta histórica (Sección 8)
   const [historyPreset, setHistoryPreset] = useState<DateFilterPreset>("today");
@@ -275,6 +285,136 @@ export function AdminDashboard({
   useEffect(() => {
     void loadHistoryRange();
   }, [loadHistoryRange]);
+
+  // Sincronizar puntos disponibles del vendedor para el modal de devolución
+  useEffect(() => {
+    if (!showReturnModal || !returnSellerId) return;
+    if (returnDate === selectedDate) {
+      const match = rows.find((r) => r.seller_id === returnSellerId);
+      setReturnSellerPoints(match ? (Number(match.units_sold) || 0) : 0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/board?preset=custom&startDate=${returnDate}&endDate=${returnDate}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const snap = (await res.json()) as SalesBoardSnapshot;
+        if (cancelled) return;
+        const match = snap.allSellersAdminTable.find((s) => s.seller.id === returnSellerId);
+        setReturnSellerPoints(match ? match.unitsSold : 0);
+      } catch {
+        // Ignorar errores transitorios
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showReturnModal, returnSellerId, returnDate, selectedDate, rows]);
+
+  const openReturnModal = (sellerId?: string) => {
+    const targetId = sellerId || rows[0]?.seller_id || snapshot.allSellersAdminTable[0]?.seller.id || "";
+    setReturnSellerId(targetId);
+    setReturnDate(selectedDate);
+    setReturnInvoices([]);
+    setReturnInvoiceInput("");
+    setReturnError("");
+    setShowReturnModal(true);
+  };
+
+  const handleAddInvoices = (textToAdd?: string) => {
+    const raw = typeof textToAdd === "string" ? textToAdd : returnInvoiceInput;
+    if (!raw.trim()) return;
+    const tokens = raw
+      .split(/[\s,;\n\r\t]+/)
+      .map((t) => t.trim().replace(/^#+/, ""))
+      .filter((t) => t.length > 0);
+    if (tokens.length === 0) return;
+
+    setReturnInvoices((prev) => {
+      const existing = new Set(prev);
+      const next = [...prev];
+      for (const token of tokens) {
+        if (!existing.has(token)) {
+          existing.add(token);
+          next.push(token);
+        }
+      }
+      return next;
+    });
+    setReturnInvoiceInput("");
+    setReturnError("");
+  };
+
+  const handleRemoveInvoice = (indexToRemove: number) => {
+    setReturnInvoices((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    setReturnError("");
+  };
+
+  const handleApplyReturn = async () => {
+    if (isApplyingReturn || returnInvoices.length === 0 || !returnSellerId) return;
+    const available = returnSellerPoints ?? 0;
+    if (available < returnInvoices.length) {
+      setReturnError(
+        `No se puede aplicar: el vendedor solo tiene ${available} punto(s) en esta fecha y se intentan descontar ${returnInvoices.length} punto(s).`
+      );
+      return;
+    }
+    setIsApplyingReturn(true);
+    setReturnError("");
+    try {
+      const payload = {
+        request_id: crypto.randomUUID(),
+        mode: "return" as const,
+        sale_date: returnDate,
+        invoices: returnInvoices,
+        entries: [
+          {
+            seller_id: returnSellerId,
+            units_sold: returnInvoices.length,
+          },
+        ],
+      };
+
+      const res = await fetch("/api/admin/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Error al aplicar la devolución");
+      }
+
+      const nextSnapshot = data.snapshot as SalesBoardSnapshot;
+      if (returnDate === selectedDate) {
+        setSnapshot(nextSnapshot);
+        syncRowsFromSnapshot(nextSnapshot);
+      } else {
+        void loadDailyData(selectedDate);
+      }
+      void loadMonthSnapshot();
+      void loadHistoryRange();
+      broadcastBoardUpdate();
+
+      const sellerObj = snapshot.allSellersAdminTable.find((s) => s.seller.id === returnSellerId)?.seller;
+      const sellerName = sellerObj?.full_name ?? "vendedor";
+
+      showNotification(
+        "success",
+        `Devolución aplicada: se descontaron ${returnInvoices.length} punto(s) a ${sellerName} por ${returnInvoices.length === 1 ? "la factura" : "las facturas"} (${returnInvoices.join(", ")}).`
+      );
+
+      setShowReturnModal(false);
+      setReturnInvoices([]);
+      setReturnInvoiceInput("");
+    } catch (err) {
+      setReturnError(err instanceof Error ? err.message : "Error al aplicar la devolución");
+    } finally {
+      setIsApplyingReturn(false);
+    }
+  };
 
   // Cálculo automático en vivo del total del Manager mientras el admin edita la tabla
   const liveManagerTotal = useMemo(() => {
@@ -705,6 +845,16 @@ export function AdminDashboard({
               <div className="flex flex-wrap gap-2">
                 <Button variant={dailyMode === "add" ? "default" : "outline"} disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("add"); syncRowsFromSnapshot(snapshot); }}>Sumar puntos</Button>
                 <Button variant={dailyMode === "set" ? "default" : "outline"} disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("set"); syncRowsFromSnapshot(snapshot); }}>Corregir total del día</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate}
+                  onClick={() => openReturnModal()}
+                  className="border-rose-500/40 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Devolución de puntos</span>
+                </Button>
               </div>
               <Button
                 type="button"
@@ -826,6 +976,7 @@ export function AdminDashboard({
                       <th className="py-3.5 px-4 text-right w-48">
                         {dailyMode === "add" ? "Puntos a sumar" : "Total del día"}
                       </th>
+                      <th className="py-3.5 px-4 text-center w-32">Devolución</th>
                       <th className="py-3.5 px-4 text-center">En TV</th>
                     </tr>
                   </thead>
@@ -886,6 +1037,21 @@ export function AdminDashboard({
                               className="ml-auto w-28 sm:w-32 text-right font-display text-lg font-semibold tabular-nums text-foreground border-separator bg-muted"
                             />
                             {dailyMode === "add" && <p className="text-xs text-secondary mt-2">Hoy: {row.units_sold} · Quedará hoy: {Number(row.units_sold) + Number(row.points_to_add)} · Mes en TV: {(monthUnitsBySeller.get(row.seller_id) ?? 0) + (selectedDate >= monthSnapshot.dateFilter.startDate && selectedDate <= monthSnapshot.dateFilter.endDate ? Number(row.points_to_add) : 0)}</p>}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate}
+                              onClick={() => openReturnModal(row.seller_id)}
+                              className="h-8 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 dark:text-rose-400"
+                              title={`Registrar devolución de factura para ${row.full_name}`}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                              <span>Devolución</span>
+                            </Button>
                           </td>
 
                           <td className="py-3.5 px-4 text-center">
@@ -1351,6 +1517,263 @@ export function AdminDashboard({
           </div>
         )}
       </main>
+
+      {/* Modal de Devolución de Puntos por Factura */}
+      {showReturnModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="return-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+        >
+          <div className="relative w-full max-w-lg rounded-2xl border border-separator bg-surface p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 border-b border-separator/70 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 id="return-modal-title" className="font-display text-base font-semibold text-foreground">
+                    Devolución de puntos
+                  </h3>
+                  <p className="text-xs text-secondary">
+                    Descuenta 1 punto por cada número de factura devuelta.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isApplyingReturn) {
+                    setShowReturnModal(false);
+                    setReturnInvoices([]);
+                    setReturnInvoiceInput("");
+                    setReturnError("");
+                  }
+                }}
+                disabled={isApplyingReturn}
+                className="rounded-lg p-1 text-secondary hover:bg-muted hover:text-foreground"
+                aria-label="Cerrar modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {returnError && (
+              <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-700 dark:text-rose-400 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{returnError}</span>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {/* Fecha y Vendedor */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="return-date" className="block text-xs font-semibold text-foreground mb-1.5">
+                    Fecha del registro
+                  </label>
+                  <input
+                    id="return-date"
+                    type="date"
+                    value={returnDate}
+                    max={todaySantoDomingo}
+                    disabled={isApplyingReturn}
+                    onChange={(e) => {
+                      if (e.target.value) setReturnDate(e.target.value);
+                    }}
+                    className="w-full h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm text-foreground"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="return-seller" className="block text-xs font-semibold text-foreground mb-1.5">
+                    Vendedor
+                  </label>
+                  <select
+                    id="return-seller"
+                    value={returnSellerId}
+                    disabled={isApplyingReturn}
+                    onChange={(e) => setReturnSellerId(e.target.value)}
+                    className="w-full h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm text-foreground"
+                  >
+                    {snapshot.allSellersAdminTable.map((item) => (
+                      <option key={item.seller.id} value={item.seller.id}>
+                        {item.seller.full_name} {!item.seller.is_active ? "(Inactivo)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Resumen del vendedor seleccionado */}
+              <div className="rounded-xl border border-separator bg-muted/60 p-3 text-xs space-y-1.5">
+                <div className="flex items-center justify-between text-secondary">
+                  <span>Puntos en esta fecha ({formatShortDateEs(returnDate)}):</span>
+                  <strong className="text-foreground text-sm tabular-nums">
+                    {returnSellerPoints !== null ? `${returnSellerPoints} pts` : "Cargando..."}
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between text-secondary">
+                  <span>Acumulado del mes en TV:</span>
+                  <strong className="text-foreground tabular-nums">
+                    {(monthUnitsBySeller.get(returnSellerId) ?? 0).toLocaleString("es-DO")} pts
+                  </strong>
+                </div>
+              </div>
+
+              {/* Ingreso de números de factura */}
+              <div className="space-y-2">
+                <label htmlFor="return-invoice-input" className="block text-xs font-semibold text-foreground">
+                  Número(s) de factura devuelta
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="return-invoice-input"
+                    type="text"
+                    placeholder="Ej. B0100004562 o pega varias facturas"
+                    value={returnInvoiceInput}
+                    disabled={isApplyingReturn}
+                    onChange={(e) => setReturnInvoiceInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddInvoices();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isApplyingReturn || !returnInvoiceInput.trim()}
+                    onClick={() => handleAddInvoices()}
+                  >
+                    Agregar
+                  </Button>
+                </div>
+                <p className="text-[11px] text-secondary">
+                  Pulsa Enter o el botón Agregar. Puedes escribir varias facturas separadas por comas, espacios o renglones.
+                </p>
+              </div>
+
+              {/* Lista de facturas ingresadas */}
+              {returnInvoices.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-foreground">
+                      Facturas a descontar ({returnInvoices.length}):
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isApplyingReturn}
+                      onClick={() => setReturnInvoices([])}
+                      className="text-[11px] text-rose-600 hover:underline"
+                    >
+                      Limpiar todas
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl bg-muted border border-separator max-h-36 overflow-y-auto">
+                    {returnInvoices.map((inv, idx) => (
+                      <span
+                        key={`${inv}-${idx}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-surface border border-separator/80 px-2.5 py-1 text-xs font-mono font-medium text-foreground shadow-xs"
+                      >
+                        <span>#{inv}</span>
+                        <button
+                          type="button"
+                          disabled={isApplyingReturn}
+                          onClick={() => handleRemoveInvoice(idx)}
+                          className="text-secondary hover:text-rose-600 transition-colors"
+                          title="Eliminar factura"
+                          aria-label={`Eliminar factura ${inv}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Cálculo en vivo */}
+                  <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between font-semibold text-rose-700 dark:text-rose-400">
+                      <span>Descuento por devolución (1 pt por factura):</span>
+                      <strong className="text-sm tabular-nums">
+                        -{returnInvoices.length} {returnInvoices.length === 1 ? "punto" : "puntos"}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between text-secondary pt-1 border-t border-rose-500/15 text-[11px]">
+                      <span>Puntos actuales ({returnSellerPoints ?? 0} pts) ➔ Quedarán:</span>
+                      <strong
+                        className={cn(
+                          "tabular-nums text-xs",
+                          (returnSellerPoints ?? 0) - returnInvoices.length < 0
+                            ? "text-rose-600 font-bold"
+                            : "text-foreground font-semibold"
+                        )}
+                      >
+                        {(returnSellerPoints ?? 0) - returnInvoices.length} pts
+                      </strong>
+                    </div>
+
+                    {(returnSellerPoints ?? 0) - returnInvoices.length < 0 && (
+                      <p className="text-[11px] font-medium text-rose-700 dark:text-rose-400 pt-1">
+                        ⚠️ No se puede aplicar: el descuento ({returnInvoices.length} pts) supera los puntos registrados para esta fecha ({returnSellerPoints ?? 0} pts). Los puntos no pueden ser negativos.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-separator p-4 text-center text-xs text-secondary">
+                  Aún no has agregado números de factura. Escribe la factura arriba y pulsa Agregar para descontar 1 punto por cada una.
+                </div>
+              )}
+            </div>
+
+            {/* Acciones */}
+            <div className="flex items-center justify-end gap-2 border-t border-separator/70 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isApplyingReturn}
+                onClick={() => {
+                  setShowReturnModal(false);
+                  setReturnInvoices([]);
+                  setReturnInvoiceInput("");
+                  setReturnError("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                disabled={
+                  isApplyingReturn ||
+                  returnInvoices.length === 0 ||
+                  (returnSellerPoints ?? 0) < returnInvoices.length
+                }
+                onClick={() => void handleApplyReturn()}
+                className="bg-rose-600 hover:bg-rose-700 text-white border-transparent"
+              >
+                {isApplyingReturn ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    <span>Aplicando devolución...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-4 w-4" />
+                    <span>
+                      Aplicar devolución ({returnInvoices.length > 0 ? `-${returnInvoices.length} pts` : "0 pts"})
+                    </span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

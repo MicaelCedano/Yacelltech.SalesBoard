@@ -875,8 +875,17 @@ export function PointsReports() {
                         <tr key={`${mov.appliedAt}-${idx}`} className="border-t border-separator/60">
                           <td className="p-2 whitespace-nowrap">{formatShortDateEs(mov.date)}</td>
                           <td className="p-2 font-medium">{mov.sellerName}</td>
-                          <td className="p-2">{mov.type}</td>
-                          <td className="p-2 text-right font-bold tabular-nums text-accent">
+                          <td className="p-2">
+                            <span className={cn(
+                              mov.type.startsWith("Devolución") && "inline-flex items-center gap-1 rounded-md bg-rose-500/10 px-1.5 py-0.5 text-rose-600 dark:text-rose-400 font-semibold"
+                            )}>
+                              {mov.type}
+                            </span>
+                          </td>
+                          <td className={cn(
+                            "p-2 text-right font-bold tabular-nums",
+                            mov.points < 0 ? "text-rose-600 dark:text-rose-400" : "text-accent"
+                          )}>
                             {mov.points >= 0 ? `+${mov.points}` : mov.points}
                           </td>
                           <td className="p-2 whitespace-nowrap text-secondary">

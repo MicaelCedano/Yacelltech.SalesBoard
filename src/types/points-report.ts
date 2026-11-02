@@ -34,6 +34,7 @@ export interface PointsReport {
   movements: {
     date: string; sellerId: string; sellerName: string; type: string;
     points: number; previous: number; total: number; appliedAt: string; appliedBy: string;
+    invoices?: string[];
   }[];
   closures?: MonthClosureSummary[];
 }
