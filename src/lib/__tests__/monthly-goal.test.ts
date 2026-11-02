@@ -32,6 +32,14 @@ describe("Meta mensual compartida", () => {
     expect(snapshot(filter).allSellersAdminTable.every((seller) => seller.effectiveGoal === 400)).toBe(true);
   });
 
+  it("mantiene la meta mensual sin duplicar cuando el ciclo inició a fin de mes y cruza al siguiente mes", () => {
+    const filter = { ...resolveDateRangeFilter("thisMonth", "2026-11-02"), startDate: "2026-10-30" };
+    const board = snapshot(filter);
+    expect(board.goalMonths).toBe(1);
+    expect(board.allSellersAdminTable.every((seller) => seller.effectiveGoal === 400)).toBe(true);
+    expect(board.manager.generalGoal).toBe(1000);
+  });
+
   it("usa solo la meta mensual también al consultar un día, incluido el primero del mes", () => {
     const board = snapshot(resolveDateRangeFilter("today", "2026-11-01"));
     expect(board.allSellersAdminTable.every((seller) => seller.effectiveGoal === 400)).toBe(true);

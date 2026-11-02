@@ -26,7 +26,7 @@ export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBo
     const requestedMode = new URLSearchParams(window.location.search).get("tv");
     let savedTvMode: string | null = null;
     try { savedTvMode = window.localStorage.getItem("salesboard-tv"); } catch {}
-    const smartTv = /SmartTV|Smart-TV|Tizen|Web0S|WebOS|HbbTV|Viera|BRAVIA|AFT\w+|Android.*TV/i.test(navigator.userAgent);
+    const smartTv = /SmartTV|Smart-TV|Tizen|Web0S|WebOS|HbbTV|Viera|BRAVIA|AFT\w+|Android.*TV|AndroidTV|GoogleTV|MiTV|TV\s?Bro|Silk|NetCast/i.test(navigator.userAgent);
     setIsTvMode(requestedMode === "1" || (requestedMode !== "0" && (savedTvMode === null ? smartTv : savedTvMode === "true")));
     const timer = window.setInterval(() => setToday(getSantoDomingoToday()), 30000);
     const fullscreenChange = () => {

@@ -166,9 +166,10 @@ export function buildSalesBoardSnapshot(params: {
 
   const datesInRange = enumerateDatesBetween(dateFilter.startDate, dateFilter.endDate);
   const numDays = Math.max(1, datesInRange.length);
-  const monthCount = datesInRange.length > 1
-    ? new Set(datesInRange.map((date) => date.slice(0, 7))).size
-    : 1;
+  const monthCount =
+    dateFilter.preset === "custom" && dateFilter.startDate.endsWith("-01") && datesInRange.length > 1
+      ? new Set(datesInRange.map((date) => date.slice(0, 7))).size
+      : 1;
   // Todos los períodos se comparan con la meta mensual, sin prorrateo diario.
   const monthlyGoalForRange = Math.max(0, settings.default_monthly_seller_goal ?? 400);
   const dateSet = new Set(datesInRange);

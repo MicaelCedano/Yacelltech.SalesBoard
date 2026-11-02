@@ -73,6 +73,8 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .public-board[data-tv="true"] .seller-unit-label,
 .public-board[data-tv="true"] .manager-progress-labels { font-weight: 550; }
 .public-board[data-tv="true"] .seller-bar-label { left: 0; right: 0; width: max-content; transform: none; margin: 0 auto 8px; }
+.public-board[data-tv="true"] .seller-columns { min-height: 0; width: 100%; }
+.public-board[data-tv="true"] .seller-column { min-width: 0; }
 .board-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 62px; flex-shrink: 0; }
 .yacelltech-logo { flex-shrink: 0; padding: 5px 8px; border-radius: 8px; }
 .yacelltech-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -115,10 +117,18 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .chart-heading > span { font-size: 15px; color: var(--secondary); white-space: nowrap; }
 .chart-scroll { overflow-x: auto; flex: 1; min-height: 0; padding-top: clamp(22px, 2vw, 36px); padding-bottom: 4px; display: flex; flex-direction: column; }
 .seller-columns { position: relative; width: 100%; flex: 1; min-height: 490px; display: flex; align-items: stretch; }
-.seller-column { --seller-color: var(--chart-bar); display: grid; grid-template-rows: 184px minmax(160px, 1fr) auto; min-width: 156px; flex: 1; position: relative; }
+.seller-column { --seller-color: var(--chart-bar); display: grid; grid-template-rows: 184px minmax(160px, 1fr) auto; min-width: clamp(85px, 8vw, 140px); flex: 1; position: relative; }
 .seller-column[data-rank="1"] { --seller-color: var(--chart-leader); }
 .seller-columns[data-count="1"] { max-width: 540px; }
 .seller-columns[data-count="2"] { max-width: 1000px; }
+.seller-columns[data-count="8"] .seller-identity .h-16,
+.seller-columns[data-count="9"] .seller-identity .h-16,
+.seller-columns[data-count="10"] .seller-identity .h-16,
+.seller-columns[data-count="11"] .seller-identity .h-16,
+.seller-columns[data-count="12"] .seller-identity .h-16 {
+  height: clamp(68px, 6.2vw, 88px);
+  width: clamp(68px, 6.2vw, 88px);
+}
 
 .seller-identity { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; text-align: center; padding: 6px 12px 8px; min-width: 0; }
 .seller-identity .h-16 { height: 96px; width: 96px; }
@@ -314,54 +324,60 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
    Height tiers reserve space for labels without flattening the actual bars. */
 @media (min-width: 900px) and (max-width: 2399px) and (min-height: 480px) and (orientation: landscape) {
   .public-board {
-    --tv-identity-height: 204px;
-    --tv-stats-height: 136px;
-    --tv-avatar-size: 112px;
-    --tv-name-size: 30px;
-    --tv-number-size: 52px;
-    --tv-label-space: 94px;
-    --tv-column-min: 128px;
     height: 100vh;
     height: 100svh;
     min-height: 0;
     overflow: hidden;
-    padding: clamp(18px, 2.5vh, 28px) clamp(24px, 2.5vw, 48px);
-    gap: clamp(12px, 1.8vh, 20px);
+    padding: clamp(14px, 2vh, 24px) clamp(16px, 1.8vw, 32px);
+    gap: clamp(10px, 1.5vh, 18px);
   }
-  .board-header { align-items: center; min-height: 54px; gap: 20px; }
-  .board-wordmark { font-size: clamp(28px, 2vw, 36px); gap: 14px; }
-  .board-brand-logo { width: 168px; height: 56px; }
-  .board-header-right { gap: 16px; }
-  .board-date { font-size: clamp(13px, 1vw, 18px); }
-  .board-date small { font-size: 12px; }
-  .manager-card { grid-template-columns: minmax(180px, 1.1fr) minmax(120px, .65fr) minmax(220px, 1.8fr); gap: 24px; padding: 18px 28px; }
-  .manager-identity { gap: 16px; }
-  .manager-identity .h-20 { width: 80px; height: 80px; }
-  .manager-label { font-size: 14px; margin-bottom: 5px; }
-  .manager-identity h2 { font-size: 28px; }
-  .manager-total { padding-left: 28px; }
-  .manager-total > span { font-size: 64px; }
-  .manager-total p { font-size: 16px; margin-top: 6px; }
-  .manager-percentage { font-size: 32px; margin-bottom: 10px; }
+  .board-header { align-items: center; min-height: 48px; gap: 16px; }
+  .board-wordmark { font-size: clamp(24px, 1.8vw, 32px); gap: 12px; }
+  .board-brand-logo { width: 156px; height: 52px; }
+  .board-header-right { gap: 14px; }
+  .board-date { font-size: clamp(12px, .9vw, 16px); }
+  .board-date small { font-size: 11.5px; }
+  .manager-card { grid-template-columns: minmax(180px, 1.1fr) minmax(120px, .65fr) minmax(220px, 1.8fr); gap: 20px; padding: clamp(14px, 1.6vh, 20px) clamp(20px, 2vw, 28px); }
+  .manager-identity { gap: 14px; }
+  .manager-identity .h-20 { width: 72px; height: 72px; }
+  .manager-label { font-size: 13px; margin-bottom: 4px; }
+  .manager-identity h2 { font-size: clamp(22px, 1.6vw, 28px); }
+  .manager-total { padding-left: 24px; }
+  .manager-total > span { font-size: clamp(48px, 4.2vw, 64px); }
+  .manager-total p { font-size: 14px; margin-top: 4px; }
+  .manager-percentage { font-size: clamp(26px, 2.2vw, 32px); margin-bottom: 8px; }
   .progress-track { height: 12px; }
-  .manager-progress-labels { font-size: 14px; margin-top: 10px; }
-  .sellers-chart { padding: 22px 28px 20px; }
-  .chart-heading { margin-bottom: 14px; }
-    .chart-heading h1 { font-size: 26px; }
+  .manager-progress-labels { font-size: 13px; margin-top: 8px; }
+  .sellers-chart { padding: clamp(16px, 1.8vh, 22px) clamp(16px, 1.5vw, 24px) 16px; }
+  .chart-heading { margin-bottom: 12px; gap: 16px; }
+  .chart-heading h1 { font-size: clamp(20px, 1.5vw, 26px); }
+  .chart-heading > span { font-size: 13px; }
+  .chart-scroll { overflow-x: auto; overflow-y: hidden; padding-top: clamp(14px, 1.6vh, 24px); }
+  .seller-columns { min-height: 0; width: 100%; }
+  .seller-column { min-width: 0; grid-template-rows: clamp(140px, 20vh, 184px) minmax(80px, 1fr) auto; }
+  .seller-identity { padding: 4px 6px 6px; }
+  .seller-identity .h-16 { height: clamp(68px, 6.5vw, 92px); width: clamp(68px, 6.5vw, 92px); }
   .seller-name { margin-top: 6px; }
-  .seller-rank { min-height: 22px; padding-block: 2px; margin-top: 3px; }
-  .seller-bar-track { border-radius: 14px 14px 5px 5px; }
-  .seller-unit-label { font-size: 12px; }
-  .seller-stats { padding-top: 12px; }
-  .seller-goal { font-size: 22px; }
-  .seller-goal > small { font-size: 12px; }
+  .seller-name h2 { font-size: clamp(15px, 1.25vw, 22px); }
+  .seller-rank { min-height: 22px; font-size: clamp(10px, .8vw, 12px); padding: 2px 7px; margin-top: 3px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .seller-bar-stage { padding-top: clamp(56px, 8vh, 76px); }
+  .seller-bar-track { width: min(68%, 130px); border-radius: 14px 14px 5px 5px; }
+  .seller-units { font-size: clamp(26px, 2.1vw, 42px); }
+  .seller-unit-label { font-size: 11px; }
+  .seller-bar-goal { font-size: clamp(8.5px, .72vw, 11px); bottom: 10px; }
+  .seller-stats { padding-top: 10px; }
+  .seller-goal { font-size: clamp(17px, 1.35vw, 21px); }
+  .seller-goal > small { font-size: 11px; }
+  .seller-prize-tag { margin-top: 5px; gap: 3px; }
+  .seller-prize-pill { padding: 2px 7px; font-size: clamp(9.5px, .78vw, 11px); }
+  .seller-prize-name { font-size: clamp(9px, .7vw, 10.5px); max-width: 110px; }
 }
 
 @media (min-width: 900px) and (max-width: 2399px) and (min-height: 480px) and (max-height: 649px) and (orientation: landscape) {
-  .public-board { --tv-identity-height: 96px; --tv-stats-height: 88px; --tv-avatar-size: 40px; --tv-name-size: 18px; --tv-number-size: 30px; --tv-label-space: 64px; --tv-column-min: 110px; padding: 12px 20px; gap: 8px; }
-  .board-header { min-height: 40px; gap: 12px; }
+  .public-board { padding: 12px 18px; gap: 8px; }
+  .board-header { min-height: 38px; gap: 12px; }
   .board-brand-logo { width: 120px; height: 40px; }
-  .board-wordmark { font-size: 24px; gap: 10px; }
+  .board-wordmark { font-size: 22px; gap: 10px; }
   .board-header-right { gap: 10px; }
   .board-date { font-size: 12px; }
   .board-date small { font-size: 11px; }
@@ -379,18 +395,27 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
   .manager-progress-labels { font-size: 11px; margin-top: 6px; gap: 8px; }
   .sellers-chart { padding: 12px 16px; border-radius: 18px; }
   .chart-heading { margin-bottom: 8px; }
-    .chart-heading h1 { font-size: 22px; }
+  .chart-heading h1 { font-size: 20px; }
   .chart-heading > span { font-size: 12px; }
-  .seller-identity { padding-block: 4px; }
+  .seller-columns { min-height: 0; }
+  .seller-column { min-width: 0; grid-template-rows: 120px minmax(60px, 1fr) auto; }
+  .seller-identity { padding: 2px 4px 4px; }
+  .seller-identity .h-16 { height: 52px; width: 52px; }
   .seller-name { margin-top: 4px; }
-  .seller-rank { min-height: 18px; font-size: 11px; margin-top: 2px; }
+  .seller-name h2 { font-size: 15px; }
+  .seller-rank { min-height: 18px; font-size: 10px; margin-top: 2px; padding: 1px 6px; }
+  .seller-bar-stage { padding-top: 48px; }
+  .seller-bar-track { width: min(68%, 100px); }
+  .seller-units { font-size: 24px; }
   .seller-unit-label { font-size: 10px; }
-  .seller-stats { padding-top: 10px; }
-  .seller-bar-goal { font-size: 9.5px; bottom: 8px; }
-  .seller-goal { font-size: 18px; }
-  .seller-goal > small { font-size: 11px; }
+  .seller-stats { padding-top: 6px; }
+  .seller-bar-goal { font-size: 8.5px; bottom: 6px; }
+  .seller-goal { font-size: 16px; }
+  .seller-goal > small { font-size: 10px; }
+  .seller-prize-pill { padding: 1px 6px; font-size: 9.5px; }
 }
 
 @media (min-width: 900px) and (max-width: 2399px) and (min-height: 540px) and (max-height: 649px) and (orientation: landscape) {
-  .public-board { --tv-identity-height: 116px; --tv-avatar-size: 56px; --tv-name-size: 20px; }
+  .seller-identity .h-16 { height: 60px; width: 60px; }
+  .seller-column { grid-template-rows: 135px minmax(70px, 1fr) auto; }
 }
