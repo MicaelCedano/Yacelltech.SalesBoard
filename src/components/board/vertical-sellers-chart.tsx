@@ -68,8 +68,15 @@ export function VerticalSellersChart({
                     <div className="seller-name">
                       <h2 title={item.seller.full_name}>{item.seller.full_name}</h2>
                     </div>
-                    <span className="seller-rank">
-                      {item.rank ? `${item.isTied ? "Empate · " : ""}${item.rank}.º lugar` : "Sin ventas aún"}
+                    <span
+                      className="seller-rank"
+                      title={item.isTied ? `Empate en ${item.rank}.º lugar` : `${item.rank}.º lugar`}
+                    >
+                      {item.rank
+                        ? item.isTied
+                          ? `${item.rank}.º · Empate`
+                          : `${item.rank}.º lugar`
+                        : "Sin ventas aún"}
                     </span>
                   </div>
                   <div className="seller-bar-stage" aria-hidden="true">
