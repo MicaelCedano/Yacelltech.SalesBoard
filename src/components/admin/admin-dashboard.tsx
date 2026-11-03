@@ -64,6 +64,8 @@ export function AdminDashboard({
   const [isSavingDaily, setIsSavingDaily] = useState(false);
   const [isClosingMonth, setIsClosingMonth] = useState(false);
   const [showCloseMonthConfirm, setShowCloseMonthConfirm] = useState(false);
+  const [showResetCycleConfirm, setShowResetCycleConfirm] = useState(false);
+  const [isResettingCycle, setIsResettingCycle] = useState(false);
   const [monthSnapshot, setMonthSnapshot] = useState<SalesBoardSnapshot>(initialSnapshot);
   const [dailyMode, setDailyMode] = useState<"add" | "set">("add");
   const [loadedDailyDate, setLoadedDailyDate] = useState<string | null>(null);
@@ -565,6 +567,46 @@ export function AdminDashboard({
     }
   };
 
+  // Reiniciar ciclo completo desde el 29 de octubre (poner en 0 para cargar desde cero)
+  const handleResetCycleStartingFrom29 = async () => {
+    if (isResettingCycle || isSavingDaily || isClosingMonth) return;
+    setIsResettingCycle(true);
+    try {
+      const res = await fetch("/api/admin/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "reset_cycle",
+          start_date: "2026-10-29",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "No se pudo reiniciar el ciclo");
+      }
+
+      setShowResetCycleConfirm(false);
+      setDailyMode("set");
+      setSelectedDate("2026-10-29");
+      await loadMonthSnapshot();
+      await loadDailyData("2026-10-29");
+      void loadHistoryRange();
+      broadcastBoardUpdate();
+
+      showNotification(
+        "success",
+        "Puntos reiniciados correctamente a 0. Ahora puedes cargar los puntos día por día empezando por el 29 de octubre."
+      );
+    } catch (err) {
+      showNotification(
+        "error",
+        err instanceof Error ? err.message : "Error al reiniciar el ciclo"
+      );
+    } finally {
+      setIsResettingCycle(false);
+    }
+  };
+
   // Subida de fotografía a Supabase Storage (o Data URL en modo demo)
   const uploadPhotoFile = async (
     file: File,
@@ -923,6 +965,59 @@ export function AdminDashboard({
                 >
                   Recargar fecha
                 </Button>
+                <div className="flex flex-wrap items-center gap-1 border-l border-separator/80 pl-2">
+                  <span className="text-[11px] text-secondary font-medium mr-0.5">Días del ciclo:</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingDaily || dailyRetryPending}
+                    variant={selectedDate === "2026-10-29" ? "default" : "outline"}
+                    className="h-8 px-2 text-xs font-semibold"
+                    onClick={() => setSelectedDate("2026-10-29")}
+                  >
+                    29 oct
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingDaily || dailyRetryPending}
+                    variant={selectedDate === "2026-10-30" ? "default" : "outline"}
+                    className="h-8 px-2 text-xs font-semibold"
+                    onClick={() => setSelectedDate("2026-10-30")}
+                  >
+                    30 oct
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingDaily || dailyRetryPending}
+                    variant={selectedDate === "2026-10-31" ? "default" : "outline"}
+                    className="h-8 px-2 text-xs font-semibold"
+                    onClick={() => setSelectedDate("2026-10-31")}
+                  >
+                    31 oct
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingDaily || dailyRetryPending}
+                    variant={selectedDate === "2026-11-01" ? "default" : "outline"}
+                    className="h-8 px-2 text-xs font-semibold"
+                    onClick={() => setSelectedDate("2026-11-01")}
+                  >
+                    1 nov
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isSavingDaily || dailyRetryPending}
+                    variant={selectedDate === todaySantoDomingo ? "default" : "outline"}
+                    className="h-8 px-2 text-xs font-semibold"
+                    onClick={() => setSelectedDate(todaySantoDomingo)}
+                  >
+                    Hoy
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -972,6 +1067,16 @@ export function AdminDashboard({
               >
                 <RotateCcw className="h-4 w-4" />
                 <span>Cerrar mes / Reiniciar pantalla</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSavingDaily || isClosingMonth || isResettingCycle || dailyRetryPending || isLoadingDate}
+                onClick={() => setShowResetCycleConfirm((prev) => !prev)}
+                className="border-rose-500/40 text-rose-600 hover:bg-rose-500/10 dark:text-rose-400 font-semibold"
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span>Reiniciar ciclo desde 29 oct (Poner en 0)</span>
               </Button>
             </div>
             {showCloseMonthConfirm && (
@@ -1029,6 +1134,45 @@ export function AdminDashboard({
                         <RotateCcw className="h-4 w-4" />
                         <span>Confirmar cierre de mes y reiniciar a 0</span>
                       </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {showResetCycleConfirm && (
+              <div role="region" aria-label="Confirmar reinicio de ciclo desde 29 oct" className="rounded-2xl border border-rose-500/40 bg-surface p-5 space-y-4 shadow-subtle">
+                <div>
+                  <h3 className="font-display text-base font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                    <RotateCcw className="h-5 w-5" />
+                    <span>¿Poner todos los puntos en 0 y empezar desde el 29 de octubre?</span>
+                  </h3>
+                  <p className="text-xs text-secondary mt-1">
+                    Esta opción pondrá todos los puntos acumulados en <strong>0</strong> y fijará el inicio del ciclo oficial en el <strong>29 de octubre de 2026</strong>.
+                    Podrás ingresar los puntos día por día (29 oct, 30 oct, 31 oct, 1 nov, hoy) con exactitud.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isResettingCycle}
+                    onClick={() => setShowResetCycleConfirm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={isResettingCycle}
+                    onClick={() => void handleResetCycleStartingFrom29()}
+                  >
+                    {isResettingCycle ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>Reiniciando a 0...</span>
+                      </>
+                    ) : (
+                      <span>Sí, poner en 0 y empezar desde 29 oct</span>
                     )}
                   </Button>
                 </div>

@@ -579,7 +579,7 @@ export async function closeCurrentMonthAndResetBoard(
     );
 
     const markerIdx = demoDb.dailyGoals.findIndex((g) => g.goal_date === CYCLE_START_MARKER_GOAL_DATE);
-    if (markerIdx >= 0) {
+    if (markerIdx >= 0 && demoDb.dailyGoals[markerIdx]) {
       demoDb.dailyGoals[markerIdx] = {
         ...demoDb.dailyGoals[markerIdx]!,
         general_goal: markerGoalInt,
@@ -631,7 +631,7 @@ export async function closeCurrentMonthAndResetBoard(
  * conservando el ciclo y las ventas a partir de dicha fecha.
  */
 export async function purgeTestHistoryBeforeDate(
-  keepFromDate: string = "2026-10-30",
+  keepFromDate: string = "2026-10-29",
   actor: AdminActor
 ): Promise<{ deletedSalesCount: number; deletedGoalsCount: number }> {
   const supabase = await getSupabaseServerClient();
@@ -690,6 +690,107 @@ export async function purgeTestHistoryBeforeDate(
   return {
     deletedSalesCount: initialSalesCount - demoDb.dailySales.length,
     deletedGoalsCount: initialGoalsCount - demoDb.dailyGoals.length,
+  };
+}
+
+/**
+ * Reinicia por completo los puntos del ciclo actual a partir de una fecha específica (por defecto 2026-10-29),
+ * actualizando el marcador del ciclo oficial y eliminando las ventas acumuladas para volver a cargar
+ * los puntos día por día desde cero.
+ */
+export async function resetCycleStartingFromDate(
+  startDate: string = "2026-10-29",
+  actor: AdminActor
+): Promise<{ deletedSalesCount: number; message: string }> {
+  const supabase = await getSupabaseServerClient();
+
+  if (supabase) {
+    // 1. Eliminar todas las ventas para arrancar desde cero
+    const { data: deletedSales, error: salesErr } = await supabase
+      .from("daily_sales")
+      .delete()
+      .gte("sale_date", "1970-01-01")
+      .select("id");
+    if (salesErr) throw new Error(`Error al limpiar ventas: ${salesErr.message}`);
+
+    // 2. Eliminar logs de ventas acumuladas y devoluciones para que el historial quede limpio
+    await supabase
+      .from("audit_logs")
+      .delete()
+      .in("action_type", ["BATCH_DAILY_SALES_UPDATE", "POINTS_RETURN", "MONTH_CLOSED"]);
+
+    // 3. Actualizar el marcador de inicio de ciclo en daily_goals
+    const markerValue = encodeDateAsGoalInt(startDate);
+    const { data: existingMarker } = await supabase
+      .from("daily_goals")
+      .select("id")
+      .eq("goal_date", CYCLE_START_MARKER_GOAL_DATE)
+      .maybeSingle();
+
+    if (existingMarker) {
+      await supabase
+        .from("daily_goals")
+        .update({
+          general_goal: markerValue,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingMarker.id);
+    } else {
+      await supabase.from("daily_goals").insert({
+        id: crypto.randomUUID(),
+        goal_date: CYCLE_START_MARKER_GOAL_DATE,
+        general_goal: markerValue,
+      });
+    }
+
+    // 4. Registrar auditoría del reinicio
+    await supabase.from("audit_logs").insert({
+      id: crypto.randomUUID(),
+      actor_id: actor.userId,
+      actor_email: actor.email || "admin@yacelltech.com",
+      action_type: "RESET_CYCLE",
+      entity_type: "daily_sales",
+      entity_id: startDate,
+      sale_date: startDate,
+      previous_values: null,
+      new_values: {
+        startDate,
+        deletedSalesCount: deletedSales?.length ?? 0,
+      },
+    });
+
+    return {
+      deletedSalesCount: deletedSales?.length ?? 0,
+      message: `Ciclo reiniciado con éxito desde el ${formatShortDateEs(startDate)}. Los puntos quedaron en 0 y listos para cargar día por día.`,
+    };
+  }
+
+  // Modo demostración local
+  const demoDb = readDemoDatabase();
+  const deletedSalesCount = demoDb.dailySales.length;
+  demoDb.dailySales = [];
+  demoDb.auditLogs = demoDb.auditLogs.filter(
+    (l) => !["BATCH_DAILY_SALES_UPDATE", "POINTS_RETURN", "MONTH_CLOSED"].includes(l.action_type)
+  );
+
+  const markerIdx = demoDb.dailyGoals.findIndex((g) => g.goal_date === CYCLE_START_MARKER_GOAL_DATE);
+  const markerVal = encodeDateAsGoalInt(startDate);
+  if (markerIdx >= 0 && demoDb.dailyGoals[markerIdx]) {
+    demoDb.dailyGoals[markerIdx].general_goal = markerVal;
+  } else {
+    demoDb.dailyGoals.push({
+      id: `goal-${CYCLE_START_MARKER_GOAL_DATE}`,
+      goal_date: CYCLE_START_MARKER_GOAL_DATE,
+      general_goal: markerVal,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+  }
+  writeDemoDatabase(demoDb);
+
+  return {
+    deletedSalesCount,
+    message: `Ciclo reiniciado con éxito desde el ${formatShortDateEs(startDate)}.`,
   };
 }
 

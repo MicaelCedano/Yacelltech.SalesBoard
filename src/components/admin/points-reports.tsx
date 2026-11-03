@@ -130,7 +130,7 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
 
   // Si hoy es a partir del 30 de octubre de 2026, iniciamos por defecto desde esa fecha
   const initialStartDate = useMemo(() => {
-    return today >= "2026-10-30" ? "2026-10-30" : getFirstDayOfMonth(today);
+    return today >= "2026-10-29" ? "2026-10-29" : getFirstDayOfMonth(today);
   }, [today]);
 
   const [startDate, setStartDate] = useState(initialStartDate);
@@ -284,11 +284,11 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
           <Button
             type="button"
             size="sm"
-            variant={startDate === "2026-10-30" && endDate === today ? "default" : "outline"}
+            variant={startDate === "2026-10-29" && endDate === today ? "default" : "outline"}
             disabled={Boolean(busy)}
-            onClick={() => applyQuickRange("2026-10-30", today)}
+            onClick={() => applyQuickRange("2026-10-29", today)}
           >
-            📌 Desde 30 oct (Oficial)
+            📌 Desde 29 oct (Oficial)
           </Button>
 
           <Button
