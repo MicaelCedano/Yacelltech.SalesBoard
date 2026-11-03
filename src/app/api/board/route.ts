@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
         allSellersAdminTable: snapshot.allSellersAdminTable,
         lastUpdatedIso: snapshot.lastUpdatedIso,
         dataSource: snapshot.dataSource,
+        movements: snapshot.movements,
       },
       {
         status: 200,

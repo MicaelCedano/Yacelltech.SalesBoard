@@ -161,8 +161,9 @@ export function buildSalesBoardSnapshot(params: {
   dailyGoals: DailyGoalRecord[];
   dateFilter: DateRangeFilter;
   dataSource: "supabase" | "demo-local";
+  movements?: SalesBoardSnapshot["movements"];
 }): SalesBoardSnapshot {
-  const { settings, sellers, dailySales, dateFilter, dataSource } = params;
+  const { settings, sellers, dailySales, dateFilter, dataSource, movements } = params;
 
   const datesInRange = enumerateDatesBetween(dateFilter.startDate, dateFilter.endDate);
   const numDays = Math.max(1, datesInRange.length);
@@ -298,6 +299,7 @@ export function buildSalesBoardSnapshot(params: {
     allSellersAdminTable,
     lastUpdatedIso: latestGlobalUpdate,
     dataSource,
+    movements,
   };
 }
 

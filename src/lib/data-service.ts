@@ -25,6 +25,7 @@ import {
   readDemoDatabase,
   writeDemoDatabase,
 } from "@/lib/demo-store";
+import { buildPointsReport } from "@/lib/points-report";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import {
   BatchSaveDailySalesInput,
@@ -145,7 +146,7 @@ export async function fetchSalesBoardSnapshot(params?: {
       }
     }
 
-    const [settingsRes, sellersRes, salesRes] = await Promise.all([
+    const [settingsRes, sellersRes, salesRes, logsRes] = await Promise.all([
       supabase.from("app_settings").select("*").eq("id", 1).single(),
       supabase
         .from("sellers")
@@ -157,6 +158,13 @@ export async function fetchSalesBoardSnapshot(params?: {
         .select("*")
         .gte("sale_date", queryStartDate)
         .lte("sale_date", dateFilter.endDate),
+      supabase
+        .from("audit_logs")
+        .select("*")
+        .in("action_type", ["BATCH_DAILY_SALES_UPDATE", "POINTS_RETURN", "MONTH_CLOSED"])
+        .gte("sale_date", queryStartDate)
+        .lte("sale_date", dateFilter.endDate)
+        .order("created_at", { ascending: true }),
     ]);
 
     for (const result of [settingsRes, sellersRes, salesRes]) {
@@ -167,6 +175,22 @@ export async function fetchSalesBoardSnapshot(params?: {
 
     const sellers = (sellersRes.data as Seller[] | null) ?? [];
     const dailySales = (salesRes.data as DailySaleRecord[] | null) ?? [];
+    const rawLogs = (logsRes.data as AuditLogEntry[] | null) ?? [];
+
+    let movements: SalesBoardSnapshot["movements"] = [];
+    try {
+      const rep = buildPointsReport({
+        startDate: queryStartDate,
+        endDate: dateFilter.endDate,
+        storeName: settings.store_name,
+        sellers,
+        sales: dailySales,
+        logs: rawLogs,
+      });
+      movements = rep.movements;
+    } catch {
+      // Ignorar fallback si falla el reporte
+    }
 
     return buildSalesBoardSnapshot({
       settings,
@@ -175,6 +199,7 @@ export async function fetchSalesBoardSnapshot(params?: {
       dailyGoals: [],
       dateFilter,
       dataSource: "supabase",
+      movements,
     });
   }
 
@@ -194,6 +219,23 @@ export async function fetchSalesBoardSnapshot(params?: {
       };
     }
   }
+
+  const demoLogs = demoDb.auditLogs.filter(
+    (l) => l.sale_date && l.sale_date >= dateFilter.startDate && l.sale_date <= dateFilter.endDate
+  );
+  let demoMovements: SalesBoardSnapshot["movements"] = [];
+  try {
+    const rep = buildPointsReport({
+      startDate: dateFilter.startDate,
+      endDate: dateFilter.endDate,
+      storeName: demoDb.settings.store_name,
+      sellers: demoDb.sellers,
+      sales: demoDb.dailySales,
+      logs: demoLogs,
+    });
+    demoMovements = rep.movements;
+  } catch {}
+
   return buildSalesBoardSnapshot({
     settings: demoDb.settings,
     sellers: demoDb.sellers,
@@ -201,6 +243,7 @@ export async function fetchSalesBoardSnapshot(params?: {
     dailyGoals: [],
     dateFilter,
     dataSource: "demo-local",
+    movements: demoMovements,
   });
 }
 

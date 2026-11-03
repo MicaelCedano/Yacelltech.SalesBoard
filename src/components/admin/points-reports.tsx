@@ -26,6 +26,9 @@ import {
 } from "@/lib/date-utils";
 import { pointsReportRangeSchema } from "@/lib/validations";
 import type { PointsReport } from "@/types/points-report";
+import type { SalesBoardSnapshot } from "@/types/salesboard";
+import { ManagerCard } from "@/components/board/manager-card";
+import { VerticalSellersChart } from "@/components/board/vertical-sellers-chart";
 import { cn } from "@/lib/utils";
 
 export interface DayMovementBatch {
@@ -133,6 +136,7 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
   const [startDate, setStartDate] = useState(initialStartDate);
   const [endDate, setEndDate] = useState(today);
   const [report, setReport] = useState<PointsReport | null>(null);
+  const [boardSnapshot, setBoardSnapshot] = useState<SalesBoardSnapshot | null>(null);
   const [busy, setBusy] = useState<"json" | "xlsx" | null>(null);
   const [error, setError] = useState("");
   const [exported, setExported] = useState(false);
@@ -190,6 +194,17 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
         }
         if (format === "json") {
           setReport(await response.json());
+          try {
+            const boardRes = await fetch(
+              `/api/board?preset=custom&startDate=${rangeStart}&endDate=${rangeEnd}`,
+              { cache: "no-store" }
+            );
+            if (boardRes.ok) {
+              setBoardSnapshot((await boardRes.json()) as SalesBoardSnapshot);
+            }
+          } catch {
+            // Ignorar error secundario al cargar tablero
+          }
         } else {
           const sellerObj =
             sellerFilter && sellerFilter !== "all"
@@ -443,6 +458,25 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
 
       {report && (
         <>
+          {/* Tablero visual con columnas y Manager idéntico a la pantalla principal */}
+          {boardSnapshot && (
+            <div className="space-y-6">
+              <ManagerCard
+                goalMonths={boardSnapshot.goalMonths}
+                manager={boardSnapshot.manager}
+                staticDisplay={false}
+              />
+              <VerticalSellersChart
+                goalMonths={boardSnapshot.goalMonths}
+                prizeName={boardSnapshot.settings.monthly_seller_prize_name}
+                prizeValue={boardSnapshot.settings.monthly_seller_prize_value}
+                sellers={boardSnapshot.rankedSellers}
+                staticDisplay={false}
+                title={`Ranking de puntos · ${boardSnapshot.dateFilter.label}`}
+              />
+            </div>
+          )}
+
           {/* Tarjeta de Resumen Simplificado de Totales */}
           <div className="rounded-2xl border border-separator bg-surface p-5 space-y-3.5 shadow-subtle">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-separator/70 pb-3">

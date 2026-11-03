@@ -140,4 +140,16 @@ export interface SalesBoardSnapshot {
   allSellersAdminTable: RankedSellerStat[];
   lastUpdatedIso: string;
   dataSource: "supabase" | "demo-local";
+  movements?: {
+    date: string;
+    sellerId: string;
+    sellerName: string;
+    type: string;
+    points: number;
+    previous: number;
+    total: number;
+    appliedAt: string;
+    appliedBy: string;
+    invoices?: string[];
+  }[];
 }
