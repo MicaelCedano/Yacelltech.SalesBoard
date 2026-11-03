@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, BarChart3, CheckCircle2, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, UserCheck, UserPlus, X } from "lucide-react";
+import { AlertCircle, BarChart3, Calendar, CheckCircle2, Clock, ExternalLink, Eye, EyeOff, LogOut, Plus, Pencil, RefreshCw, RotateCcw, Save, UserCheck, UserPlus, X } from "lucide-react";
 import {
   DateFilterPreset,
   SalesBoardSnapshot,
@@ -18,7 +18,8 @@ import { broadcastBoardUpdate } from "@/hooks/use-salesboard-realtime";
 import { ThemeToggle } from "@/components/ui/appearance-provider";
 import { YacellTechLogo } from "@/components/ui/yacelltech-logo";
 import { SellerPhotoField } from "@/components/admin/seller-photo-field";
-import { PointsReports } from "@/components/admin/points-reports";
+import { PointsReports, getDayBatches } from "@/components/admin/points-reports";
+import type { PointsReport } from "@/types/points-report";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,12 @@ export function AdminDashboard({
   const dailySaveRef = useRef(false);
   const dailyLoadRef = useRef(0);
   const dailyRequestRef = useRef<{ request_id: string; mode: "add" | "set"; sale_date: string; entries: { seller_id: string; units_sold: number; expected_version: number }[] } | null>(null);
+
+  // Historial de movimientos y cambios para la fecha seleccionada
+  const [selectedDateMovements, setSelectedDateMovements] = useState<PointsReport["movements"]>([]);
+  const selectedDateBatches = useMemo(() => {
+    return getDayBatches(selectedDateMovements, selectedDate);
+  }, [selectedDateMovements, selectedDate]);
 
   // Estado del Modal de Devolución de Puntos por Número de Factura
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -246,6 +253,22 @@ export function AdminDashboard({
         syncRowsFromSnapshot(data);
         setLoadedDailyDate(dateStr);
         void loadMonthSnapshot();
+
+        // Cargar historial de movimientos de esta fecha
+        try {
+          const repRes = await fetch(
+            `/api/admin/reports?startDate=${dateStr}&endDate=${dateStr}&format=json`,
+            { cache: "no-store" }
+          );
+          if (repRes.ok) {
+            const repData = (await repRes.json()) as { movements?: PointsReport["movements"] };
+            if (loadId === dailyLoadRef.current) {
+              setSelectedDateMovements(repData.movements || []);
+            }
+          }
+        } catch {
+          // Ignorar errores en movimientos
+        }
       } catch (err) {
         if (loadId !== dailyLoadRef.current) return;
         showNotification(
@@ -396,6 +419,7 @@ export function AdminDashboard({
       }
       void loadMonthSnapshot();
       void loadHistoryRange();
+      void loadDailyData(selectedDate);
       broadcastBoardUpdate();
 
       const sellerObj = snapshot.allSellersAdminTable.find((s) => s.seller.id === returnSellerId)?.seller;
@@ -474,6 +498,7 @@ export function AdminDashboard({
       syncRowsFromSnapshot(nextSnapshot);
       void loadMonthSnapshot();
       void loadHistoryRange();
+      void loadDailyData(selectedDate);
       broadcastBoardUpdate();
 
       showNotification(
@@ -769,7 +794,18 @@ export function AdminDashboard({
         </nav>
       </header>
       <main className="admin-main space-y-6">
-        {(activeTab === "reports" || activeTab === "audit") && <PointsReports />}
+        {(activeTab === "reports" || activeTab === "audit") && (
+          <PointsReports
+            onSelectDateForEditing={(date) => {
+              setSelectedDate(date);
+              setActiveTab("daily");
+              showNotification(
+                "success",
+                `Fecha ${formatShortDateEs(date)} cargada para registrar o editar puntos.`
+              );
+            }}
+          />
+        )}
         {activeTab === "goals" && (
           <section className="mx-auto max-w-3xl rounded-2xl border border-separator bg-surface p-6 space-y-5">
             <div><h1 className="font-display text-xl font-semibold">Metas</h1><p className="mt-2 text-sm text-secondary">Configura las metas mensuales de los vendedores y del supervisor. Cada objetivo es independiente.</p></div>
@@ -833,14 +869,85 @@ export function AdminDashboard({
         {activeTab === "daily" && (
           <div className="space-y-6">
             <div className="admin-page-heading">
-              <div><h1>Registro diario</h1><p>{dailyMode === "add" ? "Introduce los puntos nuevos; se sumarán a los ya registrados para esa fecha." : "Corrige el total del día. Este modo reemplaza la cantidad guardada."}</p></div>
+              <div>
+                <h1>Registro diario</h1>
+                <p>
+                  {dailyMode === "add"
+                    ? "Introduce los puntos nuevos; se sumarán a los ya registrados para esa fecha."
+                    : "Corrige el total del día. Este modo reemplaza la cantidad guardada."}
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
-                <input type="date" disabled={isSavingDaily || dailyRetryPending} aria-label="Seleccionar fecha a editar" value={selectedDate} max={todaySantoDomingo} onInput={(event) => { if (event.currentTarget.value) setSelectedDate(event.currentTarget.value); }} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value); }} className="h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm" />
-                <Button size="sm" disabled={isSavingDaily || dailyRetryPending} variant={selectedDate === todaySantoDomingo ? "default" : "outline"} onClick={() => setSelectedDate(todaySantoDomingo)}>Hoy</Button>
-                <Button size="sm" disabled={isSavingDaily || dailyRetryPending} variant={selectedDate === addDaysToDateString(todaySantoDomingo, -1) ? "default" : "outline"} onClick={() => setSelectedDate(addDaysToDateString(todaySantoDomingo, -1))}>Ayer</Button>
-                <Button size="sm" variant="outline" disabled={isSavingDaily || isLoadingDate || dailyRetryPending} onClick={() => void loadDailyData(selectedDate)}>Recargar fecha</Button>
+                <span className="text-xs font-semibold text-secondary flex items-center gap-1 mr-1">
+                  <Calendar className="h-4 w-4 text-accent" /> Fecha:
+                </span>
+                <input
+                  type="date"
+                  disabled={isSavingDaily || dailyRetryPending}
+                  aria-label="Seleccionar fecha a editar"
+                  value={selectedDate}
+                  max={todaySantoDomingo}
+                  onInput={(event) => {
+                    if (event.currentTarget.value) setSelectedDate(event.currentTarget.value);
+                  }}
+                  onChange={(event) => {
+                    if (event.target.value) setSelectedDate(event.target.value);
+                  }}
+                  className="h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <Button
+                  size="sm"
+                  disabled={isSavingDaily || dailyRetryPending}
+                  variant={selectedDate === todaySantoDomingo ? "default" : "outline"}
+                  onClick={() => setSelectedDate(todaySantoDomingo)}
+                >
+                  Hoy
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={isSavingDaily || dailyRetryPending}
+                  variant={
+                    selectedDate === addDaysToDateString(todaySantoDomingo, -1)
+                      ? "default"
+                      : "outline"
+                  }
+                  onClick={() => setSelectedDate(addDaysToDateString(todaySantoDomingo, -1))}
+                >
+                  Ayer
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSavingDaily || isLoadingDate || dailyRetryPending}
+                  onClick={() => void loadDailyData(selectedDate)}
+                >
+                  Recargar fecha
+                </Button>
               </div>
             </div>
+
+            {selectedDate !== todaySantoDomingo && (
+              <div className="rounded-xl border border-accent/40 bg-accent/10 p-3.5 text-xs text-foreground flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                <span className="flex items-center gap-2">
+                  <span className="text-base">📅</span>
+                  <span>
+                    Estás registrando o corrigiendo puntos para la fecha:{" "}
+                    <strong className="text-accent underline font-bold">
+                      {formatLongDateSantoDomingo(selectedDate)}
+                    </strong>
+                    . Todo cambio se aplicará a ese día específico.
+                  </span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs font-semibold"
+                  onClick={() => setSelectedDate(todaySantoDomingo)}
+                >
+                  Volver a Hoy
+                </Button>
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-2" role="group" aria-label="Operación de puntos">
               <div className="flex flex-wrap gap-2">
                 <Button variant={dailyMode === "add" ? "default" : "outline"} disabled={isSavingDaily || isClosingMonth || dailyRetryPending || isLoadingDate} onClick={() => { setDailyMode("add"); syncRowsFromSnapshot(snapshot); }}>Sumar puntos</Button>
@@ -934,6 +1041,82 @@ export function AdminDashboard({
               <div className="admin-summary-total"><strong>{liveManagerTotal.toLocaleString("es-DO")}</strong><p>Puntos acumulados ({selectedDate === todaySantoDomingo ? "Hoy" : formatShortDateEs(selectedDate)})</p></div>
               <div><p className="admin-summary-label">Meta mensual por vendedor</p><p className="text-2xl font-semibold tabular-nums">{monthlySellerGoal.toLocaleString("es-DO")} puntos</p>{(Boolean((snapshot.settings.monthly_seller_prize_name ?? "").trim()) || (snapshot.settings.monthly_seller_prize_value ?? 0) > 0) && <p className="text-xs text-foreground mt-1">Premio: <strong>{(snapshot.settings.monthly_seller_prize_name ?? "").trim() || "Premio por meta cumplida"}</strong>{(snapshot.settings.monthly_seller_prize_value ?? 0) > 0 ? ` · RD$ ${(snapshot.settings.monthly_seller_prize_value ?? 0).toLocaleString("es-DO")}` : ""}</p>}<p className="text-xs text-secondary mt-2">Meta mensual del Manager: {(snapshot.settings.default_monthly_manager_goal ?? 1000).toLocaleString("es-DO")} puntos</p></div>
             </section>
+
+            {/* Historial de cambios y tandas de la fecha seleccionada */}
+            {selectedDateBatches.length > 0 && (
+              <div className="rounded-2xl border border-separator bg-surface p-4 space-y-3 shadow-subtle">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-separator/60 pb-2">
+                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Clock className="h-4 w-4 text-accent" />
+                    Historial de cambios de esta fecha ({selectedDateBatches.length}{" "}
+                    {selectedDateBatches.length === 1
+                      ? "actualización registrada"
+                      : "actualizaciones registradas"}
+                    {selectedDateBatches.length > 1 ? ": Mañana y Tarde" : ""}):
+                  </span>
+                  <span className="text-[11px] text-secondary">
+                    Cómo estaba antes ➔ Puntos sumados ➔ Total resultante
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {selectedDateBatches.map((batch, bIdx) => (
+                    <div
+                      key={`${batch.appliedAt}-${bIdx}`}
+                      className="rounded-xl border border-separator bg-muted/40 p-3 text-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between border-b border-separator/60 pb-1.5">
+                        <span className="font-semibold text-foreground flex items-center gap-1.5">
+                          <span>{batch.shiftIcon}</span>
+                          <span>{batch.shiftLabel}</span>
+                          <span className="text-secondary font-normal">({batch.timeStr})</span>
+                        </span>
+                        <span className="font-bold text-accent tabular-nums">
+                          {batch.totalPointsBatch >= 0
+                            ? `+${batch.totalPointsBatch}`
+                            : batch.totalPointsBatch}{" "}
+                          pts
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 text-[11px] text-secondary">
+                        {batch.items.map((item) => (
+                          <div
+                            key={item.sellerId}
+                            className="flex items-center justify-between"
+                          >
+                            <span className="font-medium text-foreground truncate mr-2">
+                              {item.sellerName}:
+                            </span>
+                            <span className="tabular-nums shrink-0">
+                              Antes{" "}
+                              <strong className="text-foreground">{item.previous}</strong>
+                              {" ➔ "}
+                              <strong
+                                className={
+                                  item.points >= 0 ? "text-accent" : "text-rose-500"
+                                }
+                              >
+                                {item.points >= 0 ? `+${item.points}` : item.points}
+                              </strong>{" "}
+                              ➔ Quedó en{" "}
+                              <strong className="text-foreground">
+                                {item.total} pts
+                              </strong>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="text-[10px] text-secondary/70 pt-1 flex justify-between border-t border-separator/40">
+                        <span>Operación: {batch.type}</span>
+                        <span className="truncate max-w-[180px]">{batch.appliedBy}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Tabla Editable de Registro Diario (Sección 7.1) */}
             <div className="overflow-hidden rounded-2xl border border-separator bg-surface shadow-subtle">

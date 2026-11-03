@@ -6,8 +6,10 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   Download,
   History,
+  Pencil,
   RefreshCw,
   Table,
   User,
@@ -20,10 +22,88 @@ import {
   formatTimeSantoDomingo,
   getFirstDayOfMonth,
   getSantoDomingoToday,
+  getTimeShiftSantoDomingo,
 } from "@/lib/date-utils";
 import { pointsReportRangeSchema } from "@/lib/validations";
 import type { PointsReport } from "@/types/points-report";
 import { cn } from "@/lib/utils";
+
+export interface DayMovementBatch {
+  appliedAt: string;
+  timeStr: string;
+  shiftLabel: "Mañana" | "Tarde";
+  shiftIcon: string;
+  appliedBy: string;
+  type: string;
+  invoices?: string[];
+  totalPointsBatch: number;
+  items: {
+    sellerId: string;
+    sellerName: string;
+    previous: number;
+    points: number;
+    total: number;
+    type: string;
+  }[];
+}
+
+export function getDayBatches(
+  movements: PointsReport["movements"],
+  date: string
+): DayMovementBatch[] {
+  const dayMovs = movements.filter((m) => m.date === date);
+  if (!dayMovs.length) return [];
+
+  const sorted = [...dayMovs].sort((a, b) =>
+    a.appliedAt.localeCompare(b.appliedAt)
+  );
+  const batches: DayMovementBatch[] = [];
+
+  for (const m of sorted) {
+    const existing = batches.find((b) => {
+      const diff = Math.abs(
+        new Date(b.appliedAt).getTime() - new Date(m.appliedAt).getTime()
+      );
+      return diff < 5000 && b.type === m.type;
+    });
+
+    if (existing) {
+      existing.items.push({
+        sellerId: m.sellerId,
+        sellerName: m.sellerName,
+        previous: m.previous,
+        points: m.points,
+        total: m.total,
+        type: m.type,
+      });
+      existing.totalPointsBatch += m.points;
+    } else {
+      const shift = getTimeShiftSantoDomingo(m.appliedAt);
+      batches.push({
+        appliedAt: m.appliedAt,
+        timeStr: formatTimeSantoDomingo(m.appliedAt),
+        shiftLabel: shift.label,
+        shiftIcon: shift.icon,
+        appliedBy: m.appliedBy,
+        type: m.type,
+        invoices: m.invoices,
+        totalPointsBatch: m.points,
+        items: [
+          {
+            sellerId: m.sellerId,
+            sellerName: m.sellerName,
+            previous: m.previous,
+            points: m.points,
+            total: m.total,
+            type: m.type,
+          },
+        ],
+      });
+    }
+  }
+
+  return batches;
+}
 
 function getPreviousMonthRange(todayStr: string): { start: string; end: string } {
   const firstOfThisMonth = getFirstDayOfMonth(todayStr);
@@ -37,7 +117,11 @@ function formatDayTitle(dateStr: string): string {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 
-export function PointsReports() {
+export interface PointsReportsProps {
+  onSelectDateForEditing?: (date: string) => void;
+}
+
+export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {}) {
   const [today] = useState(getSantoDomingoToday);
   const yesterday = useMemo(() => addDaysToDateString(today, -1), [today]);
 
@@ -500,6 +584,8 @@ export function PointsReports() {
                 daysToDisplay.map((day) => {
                   const isToday = day.date === today;
                   const isYesterday = day.date === yesterday;
+                  const dayBatches = getDayBatches(report.movements, day.date);
+                  const dayMovements = report.movements.filter((m) => m.date === day.date);
 
                   return (
                     <div
@@ -534,7 +620,20 @@ export function PointsReports() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {onSelectDateForEditing && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 px-2.5 text-xs gap-1.5 border-accent text-accent hover:bg-accent hover:text-white font-semibold transition-all shadow-xs"
+                              onClick={() => onSelectDateForEditing(day.date)}
+                              title={`Poner o editar puntos para ${formatShortDateEs(day.date)}`}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              <span>Poner puntos en esta fecha</span>
+                            </Button>
+                          )}
                           <span className="text-xs text-secondary font-medium">Total del día:</span>
                           <span className="inline-flex items-center rounded-xl bg-accent px-3 py-1.5 text-sm font-bold text-white shadow-sm tabular-nums">
                             {day.total.toLocaleString("es-DO")} puntos
@@ -542,11 +641,96 @@ export function PointsReports() {
                         </div>
                       </div>
 
+                      {/* Histórico de cambios y tandas de este día */}
+                      {dayBatches.length > 0 && (
+                        <div className="rounded-xl border border-separator/80 bg-muted/30 p-3.5 space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-separator/60 pb-2">
+                            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                              <Clock className="h-3.5 w-3.5 text-accent" />
+                              Histórico de cambios ({dayBatches.length}{" "}
+                              {dayBatches.length === 1
+                                ? "actualización registrada"
+                                : "actualizaciones registradas"}
+                              {dayBatches.length > 1 ? ": Mañana y Tarde" : ""}):
+                            </span>
+                            <span className="text-[11px] text-secondary">
+                              Cómo estaba antes ➔ Puntos sumados ➔ Total resultante
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {dayBatches.map((batch, bIdx) => (
+                              <div
+                                key={`${batch.appliedAt}-${bIdx}`}
+                                className="rounded-lg border border-separator bg-surface p-3 text-xs space-y-2 shadow-xs"
+                              >
+                                <div className="flex items-center justify-between border-b border-separator/60 pb-1.5">
+                                  <span className="font-semibold text-foreground flex items-center gap-1.5">
+                                    <span>{batch.shiftIcon}</span>
+                                    <span>{batch.shiftLabel}</span>
+                                    <span className="text-secondary font-normal">({batch.timeStr})</span>
+                                  </span>
+                                  <span className="font-bold text-accent tabular-nums">
+                                    {batch.totalPointsBatch >= 0
+                                      ? `+${batch.totalPointsBatch}`
+                                      : batch.totalPointsBatch}{" "}
+                                    pts
+                                  </span>
+                                </div>
+
+                                <div className="space-y-1 text-[11px] text-secondary">
+                                  {batch.items.map((item) => (
+                                    <div
+                                      key={item.sellerId}
+                                      className="flex items-center justify-between"
+                                    >
+                                      <span className="font-medium text-foreground truncate mr-2">
+                                        {item.sellerName}:
+                                      </span>
+                                      <span className="tabular-nums shrink-0">
+                                        Antes{" "}
+                                        <strong className="text-foreground">
+                                          {item.previous}
+                                        </strong>{" "}
+                                        ➔{" "}
+                                        <strong
+                                          className={
+                                            item.points >= 0
+                                              ? "text-accent"
+                                              : "text-rose-500"
+                                          }
+                                        >
+                                          {item.points >= 0
+                                            ? `+${item.points}`
+                                            : item.points}
+                                        </strong>{" "}
+                                        ➔ Quedó en{" "}
+                                        <strong className="text-foreground">
+                                          {item.total} pts
+                                        </strong>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="text-[10px] text-secondary/70 pt-1 flex justify-between border-t border-separator/40">
+                                  <span>Operación: {batch.type}</span>
+                                  <span className="truncate max-w-[180px]">{batch.appliedBy}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Cuadrícula de Vendedores y sus puntos en este día */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
                         {report.sellers.map((seller) => {
                           const pts = day.points[seller.id];
                           const hasPoints = pts !== null && pts !== undefined && pts > 0;
+                          const sellerMovs = dayMovements.filter(
+                            (m) => m.sellerId === seller.id
+                          );
 
                           return (
                             <div
@@ -577,7 +761,7 @@ export function PointsReports() {
                                 {seller.name}
                               </span>
 
-                              <div className="mt-1.5">
+                              <div className="mt-1.5 space-y-1">
                                 {hasPoints ? (
                                   <span className="inline-block rounded-lg bg-accent text-white px-2.5 py-0.5 text-xs font-bold tabular-nums shadow-xs">
                                     +{pts.toLocaleString("es-DO")} pts
@@ -590,6 +774,29 @@ export function PointsReports() {
                                   <span className="text-xs text-secondary/60 tabular-nums">
                                     —
                                   </span>
+                                )}
+
+                                {sellerMovs.length > 0 && (
+                                  <div className="text-[10px] text-secondary space-y-0.5 pt-1 border-t border-separator/50">
+                                    {sellerMovs.map((m, mIdx) => {
+                                      const shift = getTimeShiftSantoDomingo(m.appliedAt);
+                                      return (
+                                        <div
+                                          key={mIdx}
+                                          className="tabular-nums flex items-center justify-center gap-1"
+                                          title={`Hora: ${formatTimeSantoDomingo(m.appliedAt)} | Antes: ${m.previous} pts ➔ Quedó: ${m.total} pts`}
+                                        >
+                                          <span>{shift.icon}</span>
+                                          <span className="font-semibold text-foreground">
+                                            {m.points >= 0 ? `+${m.points}` : m.points}
+                                          </span>
+                                          <span className="text-[9px] text-secondary/80">
+                                            ({m.previous}➔{m.total})
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -706,20 +913,82 @@ export function PointsReports() {
                           Sin puntos registrados en este rango de fechas.
                         </p>
                       ) : (
-                        <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                           {sellerDays.map((day) => {
                             const pts = day.points[seller.id];
+                            const sellerDayMovs = report.movements
+                              .filter(
+                                (m) => m.date === day.date && m.sellerId === seller.id
+                              )
+                              .sort((a, b) => a.appliedAt.localeCompare(b.appliedAt));
+
                             return (
                               <div
                                 key={day.date}
-                                className="flex items-center justify-between rounded-lg border border-separator bg-surface px-3 py-2 text-xs"
+                                className="rounded-lg border border-separator bg-surface p-2.5 text-xs space-y-1.5 shadow-2xs"
                               >
-                                <span className="font-medium text-foreground">
-                                  {formatDayTitle(day.date)}
-                                </span>
-                                <span className="font-bold text-accent tabular-nums">
-                                  +{pts?.toLocaleString("es-DO")} pts
-                                </span>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-foreground">
+                                    {formatDayTitle(day.date)}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {onSelectDateForEditing && (
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 px-1.5 text-[11px] gap-1 text-accent hover:text-accent hover:bg-accent/10"
+                                        onClick={() => onSelectDateForEditing(day.date)}
+                                        title={`Poner puntos en ${formatShortDateEs(day.date)}`}
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                        <span>Editar</span>
+                                      </Button>
+                                    )}
+                                    <span className="font-bold text-accent tabular-nums">
+                                      +{pts?.toLocaleString("es-DO")} pts
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {sellerDayMovs.length > 0 && (
+                                  <div className="border-t border-separator/60 pt-1.5 space-y-1 text-[11px] text-secondary">
+                                    {sellerDayMovs.map((m, mIdx) => {
+                                      const shift = getTimeShiftSantoDomingo(m.appliedAt);
+                                      return (
+                                        <div
+                                          key={mIdx}
+                                          className="flex items-center justify-between"
+                                        >
+                                          <span className="flex items-center gap-1">
+                                            <span>{shift.icon}</span>
+                                            <span className="font-medium text-foreground">
+                                              {shift.label}
+                                            </span>
+                                            <span className="text-[10px] text-secondary">
+                                              ({formatTimeSantoDomingo(m.appliedAt)})
+                                            </span>
+                                          </span>
+                                          <span className="tabular-nums">
+                                            Antes <strong>{m.previous}</strong>
+                                            {" ➔ "}
+                                            <strong
+                                              className={
+                                                m.points >= 0
+                                                  ? "text-accent"
+                                                  : "text-rose-500"
+                                              }
+                                            >
+                                              {m.points >= 0 ? `+${m.points}` : m.points} pts
+                                            </strong>
+                                            {" ➔ "}
+                                            Quedó en <strong>{m.total} pts</strong>
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -865,35 +1134,58 @@ export function PointsReports() {
                         <th className="p-2">Fecha</th>
                         <th className="p-2">Vendedor</th>
                         <th className="p-2">Operación</th>
-                        <th className="p-2 text-right">Puntos</th>
-                        <th className="p-2">Hora</th>
+                        <th className="p-2 text-right">Estaba antes</th>
+                        <th className="p-2 text-right">Puntos aplicados</th>
+                        <th className="p-2 text-right">Total resultante</th>
+                        <th className="p-2">Hora (SD)</th>
                         <th className="p-2">Usuario</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {[...report.movements].reverse().map((mov, idx) => (
-                        <tr key={`${mov.appliedAt}-${idx}`} className="border-t border-separator/60">
-                          <td className="p-2 whitespace-nowrap">{formatShortDateEs(mov.date)}</td>
-                          <td className="p-2 font-medium">{mov.sellerName}</td>
-                          <td className="p-2">
-                            <span className={cn(
-                              mov.type.startsWith("Devolución") && "inline-flex items-center gap-1 rounded-md bg-rose-500/10 px-1.5 py-0.5 text-rose-600 dark:text-rose-400 font-semibold"
-                            )}>
-                              {mov.type}
-                            </span>
-                          </td>
-                          <td className={cn(
-                            "p-2 text-right font-bold tabular-nums",
-                            mov.points < 0 ? "text-rose-600 dark:text-rose-400" : "text-accent"
-                          )}>
-                            {mov.points >= 0 ? `+${mov.points}` : mov.points}
-                          </td>
-                          <td className="p-2 whitespace-nowrap text-secondary">
-                            {formatTimeSantoDomingo(mov.appliedAt)}
-                          </td>
-                          <td className="p-2 text-secondary">{mov.appliedBy}</td>
-                        </tr>
-                      ))}
+                      {[...report.movements].reverse().map((mov, idx) => {
+                        const shift = getTimeShiftSantoDomingo(mov.appliedAt);
+                        return (
+                          <tr
+                            key={`${mov.appliedAt}-${idx}`}
+                            className="border-t border-separator/60 hover:bg-muted/30"
+                          >
+                            <td className="p-2 whitespace-nowrap">
+                              {formatShortDateEs(mov.date)}
+                            </td>
+                            <td className="p-2 font-medium">{mov.sellerName}</td>
+                            <td className="p-2">
+                              <span
+                                className={cn(
+                                  mov.type.startsWith("Devolución") &&
+                                    "inline-flex items-center gap-1 rounded-md bg-rose-500/10 px-1.5 py-0.5 text-rose-600 dark:text-rose-400 font-semibold"
+                                )}
+                              >
+                                {mov.type}
+                              </span>
+                            </td>
+                            <td className="p-2 text-right text-secondary tabular-nums">
+                              {mov.previous} pts
+                            </td>
+                            <td
+                              className={cn(
+                                "p-2 text-right font-bold tabular-nums",
+                                mov.points < 0
+                                  ? "text-rose-600 dark:text-rose-400"
+                                  : "text-accent"
+                              )}
+                            >
+                              {mov.points >= 0 ? `+${mov.points}` : mov.points} pts
+                            </td>
+                            <td className="p-2 text-right font-bold text-foreground tabular-nums">
+                              {mov.total} pts
+                            </td>
+                            <td className="p-2 whitespace-nowrap text-secondary">
+                              {shift.icon} {formatTimeSantoDomingo(mov.appliedAt)}
+                            </td>
+                            <td className="p-2 text-secondary">{mov.appliedBy}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

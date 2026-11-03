@@ -201,3 +201,29 @@ export function formatTimeSantoDomingo(isoString: string): string {
     return "--:--";
   }
 }
+
+/**
+ * Determina si una hora en Santo Domingo corresponde al turno de la Mañana o de la Tarde.
+ */
+export function getTimeShiftSantoDomingo(isoString: string): { label: "Mañana" | "Tarde"; icon: string; hour: number } {
+  try {
+    const dt = new Date(isoString);
+    if (Number.isNaN(dt.getTime())) {
+      return { label: "Tarde", icon: "🌇", hour: 12 };
+    }
+    const hourStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: SANTO_DOMINGO_TZ,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(dt);
+    const hour = parseInt(hourStr, 10);
+    const isMorning = hour < 12;
+    return {
+      label: isMorning ? "Mañana" : "Tarde",
+      icon: isMorning ? "🌅" : "🌇",
+      hour,
+    };
+  } catch {
+    return { label: "Tarde", icon: "🌇", hour: 12 };
+  }
+}
