@@ -151,7 +151,8 @@ input[type="number"], .tabular-nums { font-variant-numeric: tabular-nums; }
 .seller-leader-badge svg { width: 66%; height: 72%; }
 .seller-name { display: flex; align-items: center; justify-content: center; gap: 7px; max-width: 100%; margin-top: 6px; }
 .seller-name h2 { font-size: clamp(16px, 1.2vw, 22px); letter-spacing: -.4px; line-height: 1.15; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.seller-rank { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; min-height: 20px; padding: 2px 8px; border-radius: 999px; font-size: clamp(10px, 0.78vw, 11.5px); line-height: 1.2; color: var(--secondary); margin-top: 3px; }
+.seller-rank { display: inline-flex; align-items: baseline; justify-content: center; white-space: nowrap; min-height: 20px; padding: 2px 8px; border-radius: 999px; font-size: clamp(10px, 0.78vw, 11.5px); line-height: 1.2; color: var(--secondary); margin-top: 3px; }
+.seller-rank-num { font-size: 1.35em; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .seller-column[data-rank="1"] .seller-rank { color: var(--leader); background: color-mix(in srgb, var(--leader) 10%, var(--surface)); font-weight: 550; }
 .seller-column[data-rank="1"] .seller-avatar { box-shadow: 0 0 0 3px var(--surface), 0 0 0 calc(3px + clamp(6px, .5vw, 12px)) var(--leader-emphasis); }
 .seller-bar-stage { min-height: 0; display: flex; justify-content: center; position: relative; padding-top: clamp(68px, 5.5vh, 80px); }
