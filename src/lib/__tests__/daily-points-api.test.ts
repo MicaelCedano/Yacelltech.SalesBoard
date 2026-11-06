@@ -67,6 +67,16 @@ describe("Permisos, validación y sumas locales", () => {
       ...db.settings, monthly_seller_prize_value: -500,
     }) }))).status).toBe(400);
   });
+  it("activa y desactiva las rachas desde configuración sin cambiar los puntos", async () => {
+    const db = readDemoDatabase();
+    const sales = structuredClone(db.dailySales);
+    for (const enabled of [true, false]) {
+      const res = await PATCH(new NextRequest("http://localhost/api/admin/settings", { method: "PATCH", body: JSON.stringify({ ...db.settings, streaks_enabled: enabled }) }));
+      expect(res.status).toBe(200);
+      expect((await fetchSalesBoardSnapshot()).settings.streaks_enabled).toBe(enabled);
+      expect(db.dailySales).toEqual(sales);
+    }
+  });
   it("la API protege y valida la meta mensual del Manager", async () => {
     const db = readDemoDatabase();
     for (const target of [-1, 1.5, 100001]) {

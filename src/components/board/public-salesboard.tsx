@@ -61,7 +61,7 @@ export function PublicSalesBoard({ initialSnapshot }: { initialSnapshot: SalesBo
       </header>
       {preset === "custom" && !isTvMode && <div className="custom-range"><label>Desde <input type="date" aria-label="Fecha inicial" value={customStart} max={customEnd} onChange={(event) => { if (event.target.value) setCustomStart(event.target.value); }} /></label><label>Hasta <input type="date" aria-label="Fecha final" value={customEnd} min={customStart} onChange={(event) => { if (event.target.value) setCustomEnd(event.target.value); }} /></label></div>}
       <ManagerCard goalMonths={snapshot.goalMonths} manager={snapshot.manager} staticDisplay={isTvMode} />
-      <VerticalSellersChart goalMonths={snapshot.goalMonths} prizeName={snapshot.settings.monthly_seller_prize_name} prizeValue={snapshot.settings.monthly_seller_prize_value} sellers={snapshot.rankedSellers} staticDisplay={isTvMode} title={preset === "today" ? boardTitle : `${boardTitle} · ${snapshot.dateFilter.label}`} />
+      <VerticalSellersChart showStreaks={snapshot.settings.streaks_enabled ?? false} goalMonths={snapshot.goalMonths} prizeName={snapshot.settings.monthly_seller_prize_name} prizeValue={snapshot.settings.monthly_seller_prize_value} sellers={snapshot.rankedSellers} staticDisplay={isTvMode} title={preset === "today" ? boardTitle : `${boardTitle} · ${snapshot.dateFilter.label}`} />
     </main>
   );
 }

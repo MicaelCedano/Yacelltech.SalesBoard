@@ -64,13 +64,15 @@ function normalizeAppSettingsRow(raw: AppSettings | null | undefined): AppSettin
   let tz = base.timezone || "America/Santo_Domingo";
   let fallbackName = "";
   let fallbackValue = 0;
+  let fallbackStreaksEnabled = false;
 
   if (tz.includes(PRIZE_TZ_DELIMITER)) {
     const [cleanTz, encodedJson] = tz.split(PRIZE_TZ_DELIMITER, 2);
     tz = cleanTz || "America/Santo_Domingo";
     if (encodedJson) {
       try {
-        const parsed = JSON.parse(encodedJson) as { name?: unknown; value?: unknown };
+        const parsed = JSON.parse(encodedJson) as { name?: unknown; value?: unknown; streaks_enabled?: unknown };
+        fallbackStreaksEnabled = parsed.streaks_enabled === true;
         if (typeof parsed.name === "string") fallbackName = parsed.name.trim();
         if (typeof parsed.value === "number" && Number.isFinite(parsed.value)) {
           fallbackValue = Math.max(0, Math.floor(parsed.value));
@@ -90,19 +92,20 @@ function normalizeAppSettingsRow(raw: AppSettings | null | undefined): AppSettin
   return {
     ...base,
     timezone: tz,
+    streaks_enabled: base.streaks_enabled ?? fallbackStreaksEnabled,
     monthly_seller_prize_name: explicitName || fallbackName,
     monthly_seller_prize_value: explicitValue > 0 ? explicitValue : fallbackValue,
   };
 }
 
-function encodeTimezoneWithPrize(baseTimezone: string, prizeName: string, prizeValue: number): string {
+function encodeTimezoneWithPrize(baseTimezone: string, prizeName: string, prizeValue: number, streaksEnabled: boolean): string {
   const cleanTz = (baseTimezone || "America/Santo_Domingo").split(PRIZE_TZ_DELIMITER)[0] || "America/Santo_Domingo";
   const cleanName = prizeName.trim();
   const cleanValue = Math.max(0, Math.floor(prizeValue));
-  if (!cleanName && cleanValue === 0) {
+  if (!cleanName && cleanValue === 0 && !streaksEnabled) {
     return cleanTz;
   }
-  return `${cleanTz}${PRIZE_TZ_DELIMITER}${JSON.stringify({ name: cleanName, value: cleanValue })}`;
+  return `${cleanTz}${PRIZE_TZ_DELIMITER}${JSON.stringify({ name: cleanName, value: cleanValue, streaks_enabled: streaksEnabled })}`;
 }
 /**
  * Obtiene el estado completo del tablero para una fecha o rango de fechas.
@@ -192,7 +195,21 @@ export async function fetchSalesBoardSnapshot(params?: {
       // Ignorar fallback si falla el reporte
     }
 
+    const streakSales: Pick<DailySaleRecord, "seller_id" | "sale_date" | "units_sold">[] = [];
+    if (settings.streaks_enabled) {
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const result = await supabase.from("daily_sales").select("seller_id,sale_date,units_sold")
+          .gt("units_sold", 0).lte("sale_date", today)
+          .order("sale_date", { ascending: false }).order("seller_id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (result.error) throw new Error(`No se pudo cargar las rachas: ${result.error.message}`);
+        streakSales.push(...(result.data ?? []));
+        if ((result.data?.length ?? 0) < pageSize) break;
+      }
+    }
     return buildSalesBoardSnapshot({
+      streakSales, streakToday: today,
       settings,
       sellers,
       dailySales,
@@ -237,6 +254,7 @@ export async function fetchSalesBoardSnapshot(params?: {
   } catch {}
 
   return buildSalesBoardSnapshot({
+    streakSales: demoDb.dailySales, streakToday: today,
     settings: demoDb.settings,
     sellers: demoDb.sellers,
     dailySales: demoDb.dailySales,
@@ -1049,10 +1067,10 @@ export async function updateManagerSettingsRecord(
           ? {
               monthly_seller_prize_name: nextPrizeName,
               monthly_seller_prize_value: nextPrizeValue,
-              timezone: normalizedCurrent.timezone,
+              timezone: encodeTimezoneWithPrize(normalizedCurrent.timezone, "", 0, input.streaks_enabled ?? normalizedCurrent.streaks_enabled ?? false),
             }
           : {
-              timezone: encodeTimezoneWithPrize(normalizedCurrent.timezone, nextPrizeName, nextPrizeValue),
+              timezone: encodeTimezoneWithPrize(normalizedCurrent.timezone, nextPrizeName, nextPrizeValue, input.streaks_enabled ?? normalizedCurrent.streaks_enabled ?? false),
             }),
         version: nextVersion,
         updated_by: actor.userId,
@@ -1093,6 +1111,7 @@ export async function updateManagerSettingsRecord(
       input.manager_avatar_url !== undefined
         ? input.manager_avatar_url
         : previous.manager_avatar_url,
+    streaks_enabled: input.streaks_enabled ?? previous.streaks_enabled ?? false,
     default_monthly_seller_goal: input.default_monthly_seller_goal,
     default_monthly_manager_goal: input.default_monthly_manager_goal ?? previous.default_monthly_manager_goal ?? 1000,
     monthly_seller_prize_name:
@@ -1124,6 +1143,7 @@ export async function updateManagerSettingsRecord(
       default_general_goal: previous.default_general_goal,
       default_monthly_seller_goal: previous.default_monthly_seller_goal,
       default_monthly_manager_goal: previous.default_monthly_manager_goal,
+      streaks_enabled: previous.streaks_enabled ?? false,
       monthly_seller_prize_name: previous.monthly_seller_prize_name ?? "",
       monthly_seller_prize_value: previous.monthly_seller_prize_value ?? 0,
     },
@@ -1133,6 +1153,7 @@ export async function updateManagerSettingsRecord(
       default_general_goal: updated.default_general_goal,
       default_monthly_seller_goal: updated.default_monthly_seller_goal,
       default_monthly_manager_goal: updated.default_monthly_manager_goal,
+      streaks_enabled: updated.streaks_enabled ?? false,
       monthly_seller_prize_name: updated.monthly_seller_prize_name ?? "",
       monthly_seller_prize_value: updated.monthly_seller_prize_value ?? 0,
     },

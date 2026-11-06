@@ -23,6 +23,7 @@ export interface AppSettings {
   default_monthly_manager_goal?: number;
   monthly_seller_prize_name?: string | null;
   monthly_seller_prize_value?: number | null;
+  streaks_enabled?: boolean;
   timezone: string;
   is_demo_environment: boolean;
   version: number;
@@ -100,6 +101,7 @@ export type RankMedal = "gold" | "silver" | "bronze" | "none";
 export interface RankedSellerStat {
   seller: Seller;
   unitsSold: number;
+  streakDays?: number;
   effectiveGoal: number;
   goalCompletionPercent: number;
   isGoalCompleted: boolean;

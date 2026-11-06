@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, Crown, Trophy, Users } from "lucide-react";
+import { Check, Crown, Flame, Trophy, Users } from "lucide-react";
 import { RankedSellerStat } from "@/types/salesboard";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
@@ -12,8 +12,10 @@ export function VerticalSellersChart({
   staticDisplay = false,
   prizeName,
   prizeValue,
+  showStreaks = false,
 }: {
   sellers: RankedSellerStat[];
+  showStreaks?: boolean;
   title?: string;
   staticDisplay?: boolean;
   goalMonths?: number;
@@ -68,6 +70,11 @@ export function VerticalSellersChart({
                     <div className="seller-name">
                       <h2 title={item.seller.full_name}>{item.seller.full_name}</h2>
                     </div>
+                    {showStreaks && (item.streakDays ?? 0) >= 3 && (
+                      <span className="seller-streak" aria-label={`${item.streakDays} días consecutivos con puntos`}>
+                        <Flame size={14} fill="currentColor" aria-hidden="true" /> {item.streakDays} días en racha
+                      </span>
+                    )}
                     <span
                       className="seller-rank"
                       title={item.isTied ? `Empate en ${item.rank}.º lugar` : `${item.rank}.º lugar`}

@@ -120,6 +120,7 @@ export const updateManagerSettingsSchema = z.object({
     .nullable()
     .optional(),
   monthly_seller_prize_value: prizeValueSchema.nullable().optional(),
+  streaks_enabled: z.boolean().optional(),
   expected_version: z.number().int().min(1).optional(),
 });
 

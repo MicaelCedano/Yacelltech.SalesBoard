@@ -132,6 +132,7 @@ export function AdminDashboard({
       ? (initialSnapshot.settings.monthly_seller_prize_value ?? 0)
       : ""
   );
+  const [streaksEnabled, setStreaksEnabled] = useState(initialSnapshot.settings.streaks_enabled ?? false);
   const [storeName, setStoreName] = useState(
     initialSnapshot.settings.store_name
   );
@@ -711,6 +712,7 @@ export function AdminDashboard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(scope === "goals" ? {
           ...snapshot.settings,
+          streaks_enabled: streaksEnabled,
           default_monthly_seller_goal: Number(defaultMonthlySellerGoal) || 0,
           default_monthly_manager_goal: Number(defaultMonthlyManagerGoal) || 0,
           monthly_seller_prize_name: monthlySellerPrizeName.trim(),
@@ -812,6 +814,13 @@ export function AdminDashboard({
             <div><h1 className="font-display text-xl font-semibold">Metas</h1><p className="mt-2 text-sm text-secondary">Configura las metas mensuales de los vendedores y del supervisor. Cada objetivo es independiente.</p></div>
             <form onSubmit={(event) => void handleSaveManagerSettings(event, "goals")}>
               <fieldset disabled={isSavingManager} className="space-y-5 min-w-0">
+                <div className="rounded-xl border border-separator bg-muted p-4">
+                  <label className="flex cursor-pointer items-center gap-3 text-sm font-semibold">
+                    <input type="checkbox" className="h-5 w-5 accent-orange-500" checked={streaksEnabled} onChange={(event) => setStreaksEnabled(event.target.checked)} />
+                    Mostrar distintivo de racha
+                  </label>
+                  <p className="mt-2 text-xs text-secondary">Se muestra desde 3 días consecutivos con puntos. La racha de ayer se conserva durante el día de hoy mientras se registran los puntos.</p>
+                </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="rounded-xl border border-separator bg-muted p-4">
                     <label htmlFor="monthly-seller-goal" className="mb-2 block text-sm font-semibold">Meta mensual por vendedor (Puntos)</label>

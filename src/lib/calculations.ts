@@ -9,7 +9,7 @@ import {
   SalesBoardSnapshot,
   Seller,
 } from "@/types/salesboard";
-import { enumerateDatesBetween } from "@/lib/date-utils";
+import { addDaysToDateString, enumerateDatesBetween, getSantoDomingoToday } from "@/lib/date-utils";
 
 export interface DirectDailyUpdateItem {
   seller_id: string;
@@ -150,6 +150,27 @@ export function applyDirectCumulativeDailySalesUpdate(params: {
   };
 }
 
+/** Racha actual: hoy o ayer debe tener puntos; cada día anterior debe ser consecutivo. */
+export function calculateStreaks(sales: Pick<DailySaleRecord, "seller_id" | "sale_date" | "units_sold">[], today: string): Map<string, number> {
+  const dates = new Map<string, Set<string>>();
+  for (const sale of sales) {
+    if (sale.units_sold <= 0 || sale.sale_date > today) continue;
+    if (!dates.has(sale.seller_id)) dates.set(sale.seller_id, new Set());
+    dates.get(sale.seller_id)!.add(sale.sale_date);
+  }
+  const streaks = new Map<string, number>();
+  for (const [sellerId, days] of dates) {
+    let date = days.has(today) ? today : addDaysToDateString(today, -1);
+    let count = 0;
+    while (days.has(date)) {
+      count++;
+      date = addDaysToDateString(date, -1);
+    }
+    streaks.set(sellerId, count);
+  }
+  return streaks;
+}
+
 /**
  * Calcula las estadísticas completas del tablero (Manager General + Ranking + Barras con escala común)
  * para cualquier fecha o rango de fechas seleccionado.
@@ -162,6 +183,8 @@ export function buildSalesBoardSnapshot(params: {
   dateFilter: DateRangeFilter;
   dataSource: "supabase" | "demo-local";
   movements?: SalesBoardSnapshot["movements"];
+  streakSales?: Pick<DailySaleRecord, "seller_id" | "sale_date" | "units_sold">[];
+  streakToday?: string;
 }): SalesBoardSnapshot {
   const { settings, sellers, dailySales, dateFilter, dataSource, movements } = params;
 
@@ -272,6 +295,9 @@ export function buildSalesBoardSnapshot(params: {
     monthlyGoalForRange,
     monthCount
   );
+
+  const streaks = calculateStreaks(params.streakSales ?? dailySales, params.streakToday ?? getSantoDomingoToday());
+  for (const item of rankedSellers) item.streakDays = streaks.get(item.seller.id) ?? 0;
 
   // 5. Construir lista completa para el panel administrativo (todos los vendedores activos Primero, luego inactivos)
   const allSellersAdminTable = computeRankedSellerStats(
