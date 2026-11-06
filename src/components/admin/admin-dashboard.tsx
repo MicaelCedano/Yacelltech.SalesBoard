@@ -819,7 +819,7 @@ export function AdminDashboard({
                     <input type="checkbox" className="h-5 w-5 accent-orange-500" checked={streaksEnabled} onChange={(event) => setStreaksEnabled(event.target.checked)} />
                     Mostrar distintivo de racha
                   </label>
-                  <p className="mt-2 text-xs text-secondary">Se muestra desde 3 días consecutivos con puntos. La racha de ayer se conserva durante el día de hoy mientras se registran los puntos.</p>
+                  <p className="mt-2 text-xs text-secondary">Se muestra a quienes ocupan el primer lugar desde 3 días consecutivos con puntos, incluyendo empates. La racha de ayer se conserva durante el día de hoy mientras se registran los puntos.</p>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="rounded-xl border border-separator bg-muted p-4">

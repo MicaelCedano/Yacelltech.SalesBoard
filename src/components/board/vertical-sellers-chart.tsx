@@ -70,7 +70,7 @@ export function VerticalSellersChart({
                     <div className="seller-name">
                       <h2 title={item.seller.full_name}>{item.seller.full_name}</h2>
                     </div>
-                    {showStreaks && (item.streakDays ?? 0) >= 3 && (
+                    {showStreaks && item.rank === 1 && (item.streakDays ?? 0) >= 3 && (
                       <span className="seller-streak" aria-label={`${item.streakDays} días consecutivos con puntos`}>
                         <Flame size={14} fill="currentColor" aria-hidden="true" /> {item.streakDays} días en racha
                       </span>
