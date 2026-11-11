@@ -51,6 +51,39 @@ beforeEach(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("Guardado atómico en PostgreSQL", () => {
+  it("precarga los ocho días libres, restringe su acceso y registra puntos del Manager en la misma operación", async () => {
+    await db.exec("reset role; begin");
+    try {
+      await db.exec(`create role service_role;
+        insert into public.sellers (full_name) values
+          ('Pamela'), ('Cristy'), ('Hamelys'), ('Brenda'), ('Yrismer'), ('Otoniel'), ('Greimy'), ('Samuel');`);
+      await db.exec(readFileSync("supabase/migrations/20261111000309_manager_points_and_weekly_days_off.sql", "utf8"));
+      await db.exec("set role authenticated");
+      const { rows } = await db.query<{ full_name: string; weekday: number }>(
+        "select full_name, weekday from public.seller_weekly_days_off join public.sellers on id = seller_id order by full_name",
+      );
+      expect(Object.fromEntries(rows.map((row) => [row.full_name, row.weekday]))).toEqual({
+        Brenda: 1, Cristy: 5, Greimy: 7, Hamelys: 4, Otoniel: 7, Pamela: 7, Samuel: 3, Yrismer: 7,
+      });
+      const { rows: [manager] } = await db.query<{ id: string; show_on_board: boolean }>(
+        "select id, show_on_board from public.sellers where is_manager",
+      );
+      expect(manager?.show_on_board).toBe(false);
+      const id = crypto.randomUUID();
+      const entries = [entry(3), { seller_id: manager!.id, units_sold: 7 }];
+      await apply(3, { id, entries });
+      await apply(3, { id, entries });
+      expect(await total()).toBe(10);
+
+      await db.exec(`select set_config('request.jwt.claim.sub','${VIEWER}',false);`);
+      expect((await db.query("select * from public.seller_weekly_days_off")).rows).toEqual([]);
+      await db.exec("reset role; set role anon");
+      await expect(db.query("select * from public.seller_weekly_days_off")).rejects.toThrow("permission denied");
+    } finally {
+      await db.exec("rollback; reset role");
+    }
+  });
+
   it("acepta puntos sin metas diarias y conserva las metas históricas ante clientes anteriores", async () => {
     await db.exec(`insert into public.daily_goals(goal_date,general_goal) values ('2026-10-27',75);
       update public.sellers set individual_goal=13 where id='${SELLER}';`);

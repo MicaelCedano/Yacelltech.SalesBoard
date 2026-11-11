@@ -18,6 +18,7 @@ import { broadcastBoardUpdate } from "@/hooks/use-salesboard-realtime";
 import { ThemeToggle } from "@/components/ui/appearance-provider";
 import { YacellTechLogo } from "@/components/ui/yacelltech-logo";
 import { SellerPhotoField } from "@/components/admin/seller-photo-field";
+import { WeeklyDaysOff } from "@/components/admin/weekly-days-off";
 import { PointsReports, getDayBatches } from "@/components/admin/points-reports";
 import type { PointsReport } from "@/types/points-report";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
@@ -32,7 +33,7 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-type AdminTab = "daily" | "reports" | "sellers" | "goals" | "manager" | "audit";
+type AdminTab = "daily" | "reports" | "sellers" | "days-off" | "goals" | "manager" | "audit";
 
 interface EditableDailyRow {
   seller_id: string;
@@ -40,6 +41,7 @@ interface EditableDailyRow {
   avatar_url: string | null;
   is_active: boolean;
   show_on_board: boolean;
+  isManager: boolean;
   units_sold: number | "";
   points_to_add: number | "";
   expected_version: number;
@@ -211,18 +213,18 @@ export function AdminDashboard({
       return a.seller.full_name.localeCompare(b.seller.full_name, "es");
     });
 
-    setRows(
-      sorted.map((item) => ({
-        seller_id: item.seller.id,
-        full_name: item.seller.full_name,
-        avatar_url: item.seller.avatar_url,
-        is_active: item.seller.is_active,
-        show_on_board: item.seller.show_on_board,
-        units_sold: item.unitsSold,
-        points_to_add: 0,
-        expected_version: item.recordVersion,
-      }))
-    );
+    const participants = snap.managerContribution ? [snap.managerContribution, ...sorted] : sorted;
+    setRows(participants.map((item) => ({
+      seller_id: item.seller.id,
+      full_name: item.seller.is_manager ? snap.settings.manager_name : item.seller.full_name,
+      avatar_url: item.seller.is_manager ? snap.settings.manager_avatar_url : item.seller.avatar_url,
+      is_active: item.seller.is_active,
+      show_on_board: item.seller.show_on_board,
+      isManager: Boolean(item.seller.is_manager),
+      units_sold: item.unitsSold,
+      points_to_add: 0,
+      expected_version: item.recordVersion,
+    })));
   }, []);
 
   const loadMonthSnapshot = useCallback(async () => {
@@ -325,7 +327,10 @@ export function AdminDashboard({
         if (!res.ok) return;
         const snap = (await res.json()) as SalesBoardSnapshot;
         if (cancelled) return;
-        const match = snap.allSellersAdminTable.find((s) => s.seller.id === returnSellerId);
+        const manager = snap.managerContribution;
+        const match = manager?.seller.id === returnSellerId
+          ? manager
+          : snap.allSellersAdminTable.find((s) => s.seller.id === returnSellerId);
         setReturnSellerPoints(match ? match.unitsSold : 0);
       } catch {
         // Ignorar errores transitorios
@@ -423,8 +428,7 @@ export function AdminDashboard({
       void loadDailyData(selectedDate);
       broadcastBoardUpdate();
 
-      const sellerObj = snapshot.allSellersAdminTable.find((s) => s.seller.id === returnSellerId)?.seller;
-      const sellerName = sellerObj?.full_name ?? "vendedor";
+      const sellerName = rows.find((row) => row.seller_id === returnSellerId)?.full_name ?? "vendedor";
 
       showNotification(
         "success",
@@ -455,6 +459,10 @@ export function AdminDashboard({
     const map = new Map<string, number>();
     for (const item of monthSnapshot.allSellersAdminTable) {
       map.set(item.seller.id, item.unitsSold);
+    }
+    if (monthSnapshot.managerContribution) {
+      const { seller, unitsSold } = monthSnapshot.managerContribution;
+      map.set(seller.id, unitsSold);
     }
     return map;
   }, [monthSnapshot]);
@@ -791,12 +799,16 @@ export function AdminDashboard({
             ["daily", "Registro diario"],
             ["audit", "Historial"],
             ["sellers", "Vendedores"],
+            ["days-off", "Días libres"],
             ["goals", "Metas"],
             ["manager", "Manager General"],
           ] as const).map(([id, label]) => <button key={id} type="button" onClick={() => setActiveTab(id)} aria-current={activeTab === id ? "page" : undefined}>{label}</button>)}
         </nav>
       </header>
       <main className="admin-main space-y-6">
+        {activeTab === "days-off" && (
+          <WeeklyDaysOff sellers={snapshot.allSellersAdminTable.map(({ seller }) => seller)} />
+        )}
         {(activeTab === "reports" || activeTab === "audit") && (
           <PointsReports
             onSelectDateForEditing={(date) => {
@@ -1057,6 +1069,11 @@ export function AdminDashboard({
                     </strong>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
+                    {monthSnapshot.managerContribution && (
+                      <span className="rounded-lg border border-separator bg-surface px-2.5 py-1 tabular-nums">
+                        Manager General {monthSnapshot.managerContribution.unitsSold.toLocaleString("es-DO")}
+                      </span>
+                    )}
                     {monthSnapshot.allSellersAdminTable.map((item) => (
                       <span
                         key={item.seller.id}
@@ -1218,7 +1235,7 @@ export function AdminDashboard({
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-separator bg-muted text-[11px] font-medium text-secondary">
-                      <th className="py-3.5 px-4 sm:px-6">Vendedor</th>
+                      <th className="py-3.5 px-4 sm:px-6">Persona</th>
                       <th className="py-3.5 px-4 text-right w-48">
                         {dailyMode === "add" ? "Puntos a sumar" : "Total del día"}
                       </th>
@@ -1248,6 +1265,9 @@ export function AdminDashboard({
                                   <span>{row.full_name}</span>
 
                                 </div>
+                                {row.isManager && (
+                                  <span className="text-xs text-secondary">Manager General</span>
+                                )}
                                 {!row.is_active && (
                                   <span className="text-[11px] text-warning-text">
                                     Vendedor inactivo
@@ -1263,8 +1283,8 @@ export function AdminDashboard({
                               type="number"
                               min={0}
                               step={1}
-                              aria-label={dailyMode === "add" ? `Puntos a sumar a ${row.full_name}` : `Total del día de ${row.full_name}`}
-                              disabled={dailyRetryPending}
+                              aria-label={dailyMode === "add" ? `Puntos a sumar a ${row.isManager ? "Manager General" : row.full_name}` : `Total del día de ${row.isManager ? "Manager General" : row.full_name}`}
+                              disabled={dailyRetryPending || isSavingDaily || isLoadingDate}
                               value={dailyMode === "add" ? row.points_to_add : row.units_sold}
                               onFocus={(e) => e.currentTarget.select()}
                               onChange={(e) => {
@@ -1301,7 +1321,9 @@ export function AdminDashboard({
                           </td>
 
                           <td className="py-3.5 px-4 text-center">
-                            {row.show_on_board && row.is_active ? (
+                            {row.isManager ? (
+                              <span className="text-xs font-medium text-accent">Meta global</span>
+                            ) : row.show_on_board && row.is_active ? (
                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-success-text">
                                 <Eye className="h-3.5 w-3.5" /> Visible
                               </span>
@@ -1342,7 +1364,7 @@ export function AdminDashboard({
                     <span>Estadísticas por período</span>
                   </h3>
                   <p className="text-xs text-secondary">
-                    Para períodos superiores a un día, suma automáticamente los registros diarios de cada vendedor sin duplicarlos.
+                El total de la tienda incluye los puntos diarios de los vendedores y del Manager General en el período seleccionado.
                   </p>
                 </div>
 
@@ -1682,7 +1704,7 @@ export function AdminDashboard({
                 Configuración del Manager General y Tablero
               </h2>
               <p className="mt-1 text-xs text-secondary">
-                El total de puntos del Manager General nunca se introduce manualmente; se calcula siempre en automático sumando los puntos de los vendedores.
+                Los puntos de los vendedores y del Manager General se suman a la meta global. Registra el aporte del Manager en Registro diario.
               </p>
             </div>
 
@@ -1834,7 +1856,7 @@ export function AdminDashboard({
 
                 <div>
                   <label htmlFor="return-seller" className="block text-xs font-semibold text-foreground mb-1.5">
-                    Vendedor
+                    Persona
                   </label>
                   <select
                     id="return-seller"
@@ -1843,9 +1865,9 @@ export function AdminDashboard({
                     onChange={(e) => setReturnSellerId(e.target.value)}
                     className="w-full h-10 rounded-[10px] border border-separator bg-surface px-3 text-sm text-foreground"
                   >
-                    {snapshot.allSellersAdminTable.map((item) => (
-                      <option key={item.seller.id} value={item.seller.id}>
-                        {item.seller.full_name} {!item.seller.is_active ? "(Inactivo)" : ""}
+                    {rows.map((row) => (
+                      <option key={row.seller_id} value={row.seller_id}>
+                        {row.full_name}{row.isManager ? " · Manager General" : !row.is_active ? " (Inactivo)" : ""}
                       </option>
                     ))}
                   </select>

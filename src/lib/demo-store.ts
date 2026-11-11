@@ -15,10 +15,32 @@ export interface LocalDemoDatabase {
   dailySales: DailySaleRecord[];
   dailyGoals: DailyGoalRecord[];
   auditLogs: AuditLogEntry[];
+  weeklyDaysOff?: Record<string, number | null>;
 }
 
 const DEMO_DIR = path.join(process.cwd(), ".demo-data");
 const DEMO_FILE = path.join(DEMO_DIR, "sandbox-db.json");
+const DEMO_MANAGER_ID = "66666666-6666-4666-8666-666666666666";
+
+function addDemoManager(db: LocalDemoDatabase): LocalDemoDatabase {
+  if (!db.sellers.some((seller) => seller.is_manager)) {
+    db.sellers.push({
+      id: DEMO_MANAGER_ID,
+      full_name: "Manager General",
+      is_manager: true,
+      avatar_url: null,
+      bar_color: "#007AFF",
+      individual_goal: 0,
+      is_active: true,
+      show_on_board: false,
+      display_order: 0,
+      is_demo: true,
+      created_at: db.settings.updated_at,
+      updated_at: db.settings.updated_at,
+    });
+  }
+  return db;
+}
 
 export const DEMO_SELLER_IDS = {
   luis: "33333333-3333-4333-8333-333333333333",
@@ -251,13 +273,13 @@ export function createSeedDemoDatabase(
     },
   ];
 
-  return {
+  return addDemoManager({
     settings,
     sellers,
     dailySales,
     dailyGoals,
     auditLogs,
-  };
+  });
 }
 
 let inMemoryFallback: LocalDemoDatabase | null = null;
@@ -266,7 +288,7 @@ export function readDemoDatabase(): LocalDemoDatabase {
   try {
     if (fs.existsSync(DEMO_FILE)) {
       const raw = fs.readFileSync(DEMO_FILE, "utf-8");
-      const parsed = JSON.parse(raw) as LocalDemoDatabase;
+      const parsed = addDemoManager(JSON.parse(raw) as LocalDemoDatabase);
       inMemoryFallback = parsed;
       return parsed;
     }

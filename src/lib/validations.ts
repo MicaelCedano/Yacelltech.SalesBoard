@@ -84,6 +84,11 @@ export const updateSellerSchema = createSellerSchema.partial().extend({
   display_order: z.number().int().min(0).max(999).optional(),
 });
 
+export const weeklyDayOffSchema = z.object({
+  seller_id: z.string().uuid("Selecciona un vendedor válido"),
+  weekday: z.number().int().min(1).max(7).nullable(),
+});
+
 export const updateManagerSettingsSchema = z.object({
   store_name: z
     .string()

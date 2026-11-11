@@ -486,13 +486,20 @@ export async function closeCurrentMonthAndResetBoard(
   for (const item of beforeDaySnap.allSellersAdminTable) {
     dayPointsBySeller.set(item.seller.id, item.unitsSold);
   }
+  if (beforeDaySnap.managerContribution) {
+    const { seller, unitsSold } = beforeDaySnap.managerContribution;
+    dayPointsBySeller.set(seller.id, unitsSold);
+  }
+  const monthlyParticipants = beforeMonthSnap.allSellersAdminTable;
+  const manager = beforeMonthSnap.managerContribution;
+  const monthlyTotals = manager ? [manager, ...monthlyParticipants] : monthlyParticipants;
 
   const previousValues = {
     period_start: beforeMonthSnap.dateFilter.startDate,
     period_end: closeDate,
     general_goal: beforeMonthSnap.manager.generalGoal,
     total_points: beforeMonthSnap.manager.totalUnitsSold,
-    sellers: beforeMonthSnap.allSellersAdminTable.map((item) => ({
+    sellers: monthlyTotals.map((item) => ({
       seller_id: item.seller.id,
       seller_name: item.seller.full_name,
       units_sold: item.unitsSold,
@@ -508,7 +515,7 @@ export async function closeCurrentMonthAndResetBoard(
     general_goal: beforeDaySnap.manager.generalGoal,
     total_points: 0,
     request: { mode: "close_month", sale_date: closeDate },
-    sellers: beforeMonthSnap.allSellersAdminTable.map((item) => ({
+    sellers: monthlyTotals.map((item) => ({
       seller_id: item.seller.id,
       seller_name: item.seller.full_name,
       units_sold: 0,
@@ -914,6 +921,7 @@ export async function updateSellerRecord(
       .select("*")
       .eq("id", input.id)
       .single();
+    if (prevSeller?.is_manager) throw new Error("Edita el perfil desde Manager General.");
 
     const updatePayload: Record<string, unknown> = { updated_at: nowIso };
     if (input.full_name !== undefined) updatePayload.full_name = input.full_name;
@@ -952,7 +960,7 @@ export async function updateSellerRecord(
   }
 
   const demoDb = readDemoDatabase();
-  const idx = demoDb.sellers.findIndex((s) => s.id === input.id);
+  const idx = demoDb.sellers.findIndex((s) => s.id === input.id && !s.is_manager);
   if (idx < 0) {
     throw new Error("Vendedor no encontrado");
   }
@@ -1199,16 +1207,17 @@ export async function initializeExplicitDemoData(
 
   if (supabase) {
     // Seguridad: Verificar que no existan vendedores reales de producción
-    const { count, error: countError } = await supabase
+    const { data: realSellers, error: countError } = await supabase
       .from("sellers")
-      .select("*", { count: "exact", head: true })
-      .eq("is_demo", false);
+      .select("*")
+      .eq("is_demo", false)
+      .limit(2);
 
     if (countError) {
       throw new Error(countError.message);
     }
 
-    if ((count ?? 0) > 0) {
+    if (realSellers.some((seller) => !seller.is_manager)) {
       throw new Error(
         "Operación bloqueada por seguridad: Existen vendedores reales de producción. No se permite mezclar datos de demostración con producción."
       );

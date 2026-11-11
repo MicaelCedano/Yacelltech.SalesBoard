@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { POST } from "@/app/api/admin/sales/route";
 import { GET } from "@/app/api/admin/reports/route";
 import { PATCH } from "@/app/api/admin/settings/route";
+import { GET as getDaysOff, PATCH as saveDayOff } from "@/app/api/admin/days-off/route";
 import { verifyServerAdminSession, getSupabaseServerClient } from "@/lib/supabase/server";
 import { readDemoDatabase, writeDemoDatabase, createSeedDemoDatabase } from "@/lib/demo-store";
 import { saveBatchDailySales, fetchSalesBoardSnapshot, updateManagerSettingsRecord } from "@/lib/data-service";
@@ -19,6 +20,55 @@ beforeEach(() => {
 });
 
 describe("Permisos, validación y sumas locales", () => {
+  it("suma el aporte del Manager una sola vez a la meta global y lo registra en el historial", async () => {
+    const db = readDemoDatabase();
+    const manager = db.sellers.find((seller) => seller.is_manager)!;
+    const today = getSantoDomingoToday();
+    const before = await fetchSalesBoardSnapshot({ preset: "thisMonth" });
+    const payload = {
+      request_id: crypto.randomUUID(), mode: "add", sale_date: today,
+      entries: [{ seller_id: manager.id, units_sold: 7 }],
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await POST(new NextRequest("http://localhost/api/admin/sales", {
+        method: "POST", body: JSON.stringify(payload),
+      }));
+      expect(response.status).toBe(200);
+    }
+    const after = await fetchSalesBoardSnapshot({ preset: "thisMonth" });
+    expect(after.manager.totalUnitsSold).toBe(before.manager.totalUnitsSold + 7);
+    expect(after.manager.activeSellersCount).toBe(before.manager.activeSellersCount);
+    expect(after.managerContribution?.unitsSold).toBe(7);
+    expect(after.rankedSellers).toEqual(before.rankedSellers);
+    expect(after.allSellersAdminTable).toEqual(before.allSellersAdminTable);
+    expect(after.movements).toContainEqual(expect.objectContaining({ sellerId: manager.id, points: 7 }));
+    expect((await fetchSalesBoardSnapshot({ preset: "yesterday" })).managerContribution?.unitsSold).toBe(0);
+
+    const correction = await POST(new NextRequest("http://localhost/api/admin/sales", {
+      method: "POST", body: JSON.stringify({
+        ...payload, request_id: crypto.randomUUID(), mode: "set",
+        entries: [{ seller_id: manager.id, units_sold: 4, expected_version: 1 }],
+      }),
+    }));
+    expect(correction.status).toBe(200);
+    expect((await fetchSalesBoardSnapshot({ preset: "thisMonth" })).manager.totalUnitsSold).toBe(before.manager.totalUnitsSold + 4);
+  });
+
+  it("permite consultar y editar días libres solo desde una sesión administrativa", async () => {
+    const seller = readDemoDatabase().sellers[0]!;
+    const save = (weekday: number | null) => saveDayOff(new Request("http://localhost/api/admin/days-off", {
+      method: "PATCH", body: JSON.stringify({ seller_id: seller.id, weekday }),
+    }));
+    expect((await save(8)).status).toBe(400);
+    expect((await save(7)).status).toBe(200);
+    expect(await (await getDaysOff()).json()).toEqual({ daysOff: { [seller.id]: 7 } });
+    expect((await save(null)).status).toBe(200);
+    expect(await (await getDaysOff()).json()).toEqual({ daysOff: { [seller.id]: null } });
+    vi.mocked(verifyServerAdminSession).mockResolvedValue({ isAdmin: false, userId: null, email: null, mode: "demo-local" });
+    expect((await getDaysOff()).status).toBe(403);
+    expect((await save(1)).status).toBe(403);
+  });
+
   it("guarda puntos sin metas diarias y mantiene los valores históricos", async () => {
     const db = readDemoDatabase(); const seller = db.sellers[0]!;
     const goals = structuredClone(db.dailyGoals); const sellers = structuredClone(db.sellers);

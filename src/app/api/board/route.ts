@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
         dateFilter: snapshot.dateFilter,
         goalMonths: snapshot.goalMonths,
         manager: snapshot.manager,
+        managerContribution: snapshot.managerContribution,
         rankedSellers: snapshot.rankedSellers,
         allSellersAdminTable: snapshot.allSellersAdminTable,
         lastUpdatedIso: snapshot.lastUpdatedIso,

@@ -34,6 +34,7 @@ export interface AppSettings {
 export interface Seller {
   id: string;
   full_name: string;
+  is_manager?: boolean;
   avatar_url: string | null;
   bar_color: string;
   individual_goal: number;
@@ -138,6 +139,7 @@ export interface SalesBoardSnapshot {
   dateFilter: DateRangeFilter;
   goalMonths?: number;
   manager: ManagerSummaryStat;
+  managerContribution?: Pick<RankedSellerStat, "seller" | "unitsSold" | "recordVersion">;
   rankedSellers: RankedSellerStat[];
   allSellersAdminTable: RankedSellerStat[];
   lastUpdatedIso: string;

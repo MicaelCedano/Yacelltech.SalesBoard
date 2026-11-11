@@ -249,9 +249,7 @@ export function buildSalesBoardSnapshot(params: {
     });
   }
 
-  // 3. Calcular el total del Manager General:
-  // Suma las ventas de TODOS los vendedores de la tienda en la fecha/rango seleccionado,
-  // incluyendo los que no aparezcan en pantalla (show_on_board = false), sin duplicar ni inventar ventas.
+  // La meta global incluye los aportes del Manager y de todos los vendedores.
   const validSellerIds = new Set(sellers.map((s) => s.id));
   let managerTotalUnits = 0;
   for (const [sellerId, agg] of salesBySeller.entries()) {
@@ -260,7 +258,10 @@ export function buildSalesBoardSnapshot(params: {
     }
   }
 
-  const activeSellers = sellers.filter((s) => s.is_active);
+  const managerSeller = sellers.find((seller) => seller.is_manager);
+  const managerAggregate = managerSeller && salesBySeller.get(managerSeller.id);
+  const teamSellers = sellers.filter((seller) => !seller.is_manager);
+  const activeSellers = teamSellers.filter((s) => s.is_active);
   const visibleBoardSellers = activeSellers.filter((s) => s.show_on_board);
   const monthlyManagerGoal = Math.max(0, settings.default_monthly_manager_goal ?? 1000);
   const totalGeneralGoal = monthlyManagerGoal * monthCount;
@@ -301,7 +302,7 @@ export function buildSalesBoardSnapshot(params: {
 
   // 5. Construir lista completa para el panel administrativo (todos los vendedores activos Primero, luego inactivos)
   const allSellersAdminTable = computeRankedSellerStats(
-    sellers,
+    teamSellers,
     salesBySeller,
     numDays,
     monthlyGoalForRange,
@@ -321,6 +322,11 @@ export function buildSalesBoardSnapshot(params: {
     dateFilter,
     goalMonths: monthCount,
     manager: managerSummary,
+    managerContribution: managerSeller && {
+      seller: managerSeller,
+      unitsSold: managerAggregate?.totalUnits ?? 0,
+      recordVersion: managerAggregate?.latestVersion ?? 0,
+    },
     rankedSellers,
     allSellersAdminTable,
     lastUpdatedIso: latestGlobalUpdate,
