@@ -16,6 +16,8 @@ export interface LocalDemoDatabase {
   dailyGoals: DailyGoalRecord[];
   auditLogs: AuditLogEntry[];
   weeklyDaysOff?: Record<string, number | null>;
+  dayOffOverrides?: Record<string, boolean>;
+  leadershipClosures?: { closure_date: string; leader_ids: string[] }[];
 }
 
 const DEMO_DIR = path.join(process.cwd(), ".demo-data");

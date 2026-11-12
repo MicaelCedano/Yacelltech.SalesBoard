@@ -195,21 +195,20 @@ export async function fetchSalesBoardSnapshot(params?: {
       // Ignorar fallback si falla el reporte
     }
 
-    const streakSales: Pick<DailySaleRecord, "seller_id" | "sale_date" | "units_sold">[] = [];
-    if (settings.streaks_enabled) {
-      const pageSize = 1000;
-      for (let offset = 0; ; offset += pageSize) {
-        const result = await supabase.from("daily_sales").select("seller_id,sale_date,units_sold")
-          .gt("units_sold", 0).lte("sale_date", today)
-          .order("sale_date", { ascending: false }).order("seller_id", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-        if (result.error) throw new Error(`No se pudo cargar las rachas: ${result.error.message}`);
-        streakSales.push(...(result.data ?? []));
-        if ((result.data?.length ?? 0) < pageSize) break;
-      }
+    const [daysOffRes, firstClosures] = await Promise.all([
+      supabase.rpc("board_days_off_today"),
+      supabase.from("leadership_daily_closures").select("closure_date,leader_ids").lt("closure_date", today).order("closure_date", { ascending: false }).range(0, 999),
+    ]);
+    if (daysOffRes.error || firstClosures.error) throw new Error("No se pudieron cargar los días libres o cierres de liderazgo.");
+    const closures: { closure_date: string; leader_ids: string[] }[] = firstClosures.data ?? [];
+    for (let offset = 1000; closures.length === offset; offset += 1000) {
+      const page = await supabase.from("leadership_daily_closures").select("closure_date,leader_ids").lt("closure_date", today).order("closure_date", { ascending: false }).range(offset, offset + 999);
+      if (page.error) throw new Error("No se pudieron cargar los cierres de liderazgo.");
+      closures.push(...(page.data ?? []));
     }
     return buildSalesBoardSnapshot({
-      streakSales, streakToday: today,
+      dayOffSellerIds: (daysOffRes.data ?? []).map((row: { seller_id: string }) => row.seller_id),
+      leadershipClosures: closures, streakToday: today,
       settings,
       sellers,
       dailySales,
@@ -254,7 +253,12 @@ export async function fetchSalesBoardSnapshot(params?: {
   } catch {}
 
   return buildSalesBoardSnapshot({
-    streakSales: demoDb.dailySales, streakToday: today,
+    dayOffSellerIds: demoDb.sellers.filter((seller) => {
+      const explicit = demoDb.dayOffOverrides?.[`${seller.id}:${today}`];
+      const weekday = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
+      return explicit ?? demoDb.weeklyDaysOff?.[seller.id] === weekday;
+    }).map((seller) => seller.id),
+    leadershipClosures: demoDb.leadershipClosures ?? [], streakToday: today,
     settings: demoDb.settings,
     sellers: demoDb.sellers,
     dailySales: demoDb.dailySales,

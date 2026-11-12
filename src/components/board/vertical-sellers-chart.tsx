@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Check, Crown, Flame, Trophy, Users } from "lucide-react";
+import { Check, Crown, Flame, Moon, Trophy, Users } from "lucide-react";
 import { RankedSellerStat } from "@/types/salesboard";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
@@ -26,13 +26,14 @@ export function VerticalSellersChart({
   const reducedMotion = staticDisplay || prefersReducedMotion;
   const cleanPrizeName = (prizeName ?? "").trim();
   const cleanPrizeValue = Math.max(0, Math.floor(prizeValue ?? 0));
+  const offCount = sellers.filter((item) => item.isDayOff).length;
   const hasPrize = Boolean(cleanPrizeName) || cleanPrizeValue > 0;
 
   return (
     <section className="sellers-chart" aria-label="Gráfico vertical de puntos por vendedor">
       <div className="chart-heading">
         <h1>{title}</h1>
-        <span>{sellers.length} {sellers.length === 1 ? "vendedor" : "vendedores"}</span>
+        <span>{sellers.length - offCount} trabajando · {offCount} {offCount === 1 ? "de día libre" : "de día libre"}</span>
       </div>
       {sellers.length === 0 ? (
         <div className="chart-empty">
@@ -41,7 +42,7 @@ export function VerticalSellersChart({
           <p>Los vendedores aparecerán aquí cuando estén disponibles.</p>
         </div>
       ) : (
-        <div className="chart-scroll" tabIndex={0} aria-label="Vendedores ordenados por puntos de mayor a menor; desplaza horizontalmente para ver más">
+        <div className="chart-scroll" tabIndex={0} aria-label="Vendedores ordenados por puntos de mayor a menor">
           <div className="seller-columns" data-count={sellers.length}>
             <AnimatePresence initial={false}>
               {sellers.map((item) => (
@@ -56,6 +57,7 @@ export function VerticalSellersChart({
                   data-seller-id={item.seller.id}
                   data-rank={item.rank}
                   data-units={item.unitsSold}
+                  data-streak={showStreaks && item.rank === 1 && (item.streakDays ?? 0) >= 3}
                   aria-label={`${item.seller.full_name}: ${item.unitsSold} ${item.unitsSold === 1 ? "punto" : "puntos"}${item.rank ? `, posición ${item.rank}` : ""}`}
                 >
                   <div className="seller-identity">
@@ -70,9 +72,10 @@ export function VerticalSellersChart({
                     <div className="seller-name">
                       <h2 title={item.seller.full_name}>{item.seller.full_name}</h2>
                     </div>
+                    {item.isDayOff && <span className="seller-day-off"><Moon size={13} aria-hidden="true" /> Día libre</span>}
                     {showStreaks && item.rank === 1 && (item.streakDays ?? 0) >= 3 && (
-                      <span className="seller-streak" aria-label={`${item.streakDays} días consecutivos con puntos`}>
-                        <Flame size={14} fill="currentColor" aria-hidden="true" /> {item.streakDays} días en racha
+                      <span className="seller-streak" aria-label={`${item.streakDays} días consecutivos en primer lugar`}>
+                        <Flame size={14} fill="currentColor" aria-hidden="true" /> Racha: {item.streakDays} días
                       </span>
                     )}
                     <span

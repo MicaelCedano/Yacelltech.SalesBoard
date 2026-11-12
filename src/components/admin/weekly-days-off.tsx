@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { AvatarBadge } from "@/components/ui/avatar-badge";
 import { Button } from "@/components/ui/button";
+import { broadcastBoardUpdate } from "@/hooks/use-salesboard-realtime";
 import type { Seller } from "@/types/salesboard";
 
 const weekdays = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
 export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
   const [daysOff, setDaysOff] = useState<Record<string, number | null> | null>(null);
+  const [today, setToday] = useState("");
+  const [todayOff, setTodayOff] = useState<Record<string, boolean>>({});
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -22,7 +25,7 @@ export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
         const response = await fetch("/api/admin/days-off", { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error();
         const data = await response.json();
-        if (!controller.signal.aborted) setDaysOff(data.daysOff);
+        if (!controller.signal.aborted) { setDaysOff(data.daysOff); setToday(data.today); setTodayOff(data.todayOff); }
       } catch {
         if (!controller.signal.aborted) setError("No se pudieron cargar los días libres.");
       }
@@ -42,6 +45,8 @@ export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
         body: JSON.stringify({ seller_id: seller.id, weekday }),
       });
       if (!response.ok) throw new Error();
+      broadcastBoardUpdate();
+      setLoadAttempt((attempt) => attempt + 1);
       setDaysOff((previous) => ({ ...previous, [seller.id]: weekday }));
       setConfirmation(weekday === null
         ? `Se quitó el día libre de ${seller.full_name}.`
@@ -53,6 +58,18 @@ export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
     }
   }
 
+  async function setTodayStatus(seller: Seller, isOff: boolean) {
+    setSavingId(seller.id); setError(""); setConfirmation("");
+    try {
+      const response = await fetch("/api/admin/days-off", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seller_id: seller.id, is_off: isOff, date: today }) });
+      if (!response.ok) throw new Error();
+      setTodayOff(previous => ({ ...previous, [seller.id]: isOff }));
+      setConfirmation(`${seller.full_name}: ${isOff ? "día libre" : "trabajando"} hoy.`);
+      broadcastBoardUpdate();
+    } catch { setError("No se pudo actualizar el estado de hoy. Recarga y vuelve a intentar."); }
+    finally { setSavingId(null); }
+  }
+
   const activeSellers = sellers.filter((seller) => seller.is_active);
 
   return (
@@ -61,7 +78,7 @@ export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
         <CalendarDays size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />
         <div>
           <h2 className="font-display text-lg font-medium text-foreground">Días libres</h2>
-          <p className="text-sm text-secondary">Selecciona el día libre semanal de cada persona. Los cambios se guardan al elegir.</p>
+          <p className="text-sm text-secondary">Configura el día semanal o marca una excepción solo para hoy. Es un indicador; no modifica puntos.</p>
         </div>
       </header>
       {daysOff ? (
@@ -73,6 +90,8 @@ export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
                   <AvatarBadge src={seller.avatar_url} name={seller.full_name} size="sm" />
                   {seller.full_name}
                 </label>
+                <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!todayOff[seller.id]} disabled={savingId !== null || !today} onChange={(event) => void setTodayStatus(seller, event.target.checked)} /> Libre hoy</label>
                 <select
                   id={`day-off-${seller.id}`}
                   aria-label={`Día libre de ${seller.full_name}`}
@@ -84,6 +103,7 @@ export function WeeklyDaysOff({ sellers }: { sellers: Seller[] }) {
                   <option value="">Sin asignar</option>
                   {weekdays.map((day, index) => <option key={day} value={index + 1}>{day}</option>)}
                 </select>
+                </div>
               </li>
             ))}
           </ul>

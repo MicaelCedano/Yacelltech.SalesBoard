@@ -84,6 +84,31 @@ describe("Guardado atómico en PostgreSQL", () => {
     }
   });
 
+  it("registra cierres acumulados una vez y respeta días libres y permisos", async () => {
+    await db.exec("reset role; begin");
+    try {
+      await db.exec("create role service_role");
+      await db.exec(readFileSync("supabase/migrations/20261111000309_manager_points_and_weekly_days_off.sql", "utf8"));
+      const migration = readFileSync("supabase/migrations/20261112005814_leadership_days_off.sql", "utf8")
+        .replace("CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;", "")
+        .replace("SELECT cron.schedule('salesboard-leadership-close', '0 4 * * *', 'SELECT public.close_daily_leadership()');", "")
+        .replaceAll("now() AT TIME ZONE 'America/Santo_Domingo'", "timestamptz '2026-11-04 04:00:30+00' AT TIME ZONE 'America/Santo_Domingo'");
+      await db.exec(migration);
+      await db.exec(`insert into public.daily_sales(seller_id,sale_date,units_sold) values ('${SELLER}', '2026-11-01', 7);
+        insert into public.seller_weekly_days_off(seller_id,weekday) values ('${SELLER}',3);
+        select public.close_daily_leadership(); select public.close_daily_leadership();`);
+      expect((await db.query<{ leader_ids: string[] }>("select leader_ids from public.leadership_daily_closures")).rows).toEqual([{ leader_ids: [SELLER] }]);
+      await db.exec("set role anon");
+      expect((await db.query("select * from public.board_days_off_today()" )).rows).toEqual([{ seller_id: SELLER }]);
+      await db.exec("savepoint before_denied");
+      await expect(db.query("select public.close_daily_leadership()" )).rejects.toThrow();
+      await db.exec("rollback to savepoint before_denied; reset role; set role authenticated");
+      await db.exec(`insert into public.seller_day_off_overrides(seller_id,off_date,is_off) values ('${SELLER}','2026-11-04',false)`);
+      expect((await db.query("select * from public.board_days_off_today()" )).rows).toEqual([]);
+      expect(await total()).toBe(7);
+    } finally { await db.exec("rollback; reset role"); }
+  });
+
   it("acepta puntos sin metas diarias y conserva las metas históricas ante clientes anteriores", async () => {
     await db.exec(`insert into public.daily_goals(goal_date,general_goal) values ('2026-10-27',75);
       update public.sellers set individual_goal=13 where id='${SELLER}';`);

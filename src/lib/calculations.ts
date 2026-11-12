@@ -150,23 +150,15 @@ export function applyDirectCumulativeDailySalesUpdate(params: {
   };
 }
 
-/** Racha actual: hoy o ayer debe tener puntos; cada día anterior debe ser consecutivo. */
-export function calculateStreaks(sales: Pick<DailySaleRecord, "seller_id" | "sale_date" | "units_sold">[], today: string): Map<string, number> {
-  const dates = new Map<string, Set<string>>();
-  for (const sale of sales) {
-    if (sale.units_sold <= 0 || sale.sale_date > today) continue;
-    if (!dates.has(sale.seller_id)) dates.set(sale.seller_id, new Set());
-    dates.get(sale.seller_id)!.add(sale.sale_date);
-  }
+/** Cuenta únicamente cierres consecutivos verificados hasta ayer, incluidos empates. */
+export function calculateLeadershipStreaks(closures: { closure_date: string; leader_ids: string[] }[], today: string): Map<string, number> {
+  const byDate = new Map(closures.map((row) => [row.closure_date, row.leader_ids]));
+  const latest = byDate.get(addDaysToDateString(today, -1)) ?? [];
   const streaks = new Map<string, number>();
-  for (const [sellerId, days] of dates) {
-    let date = days.has(today) ? today : addDaysToDateString(today, -1);
-    let count = 0;
-    while (days.has(date)) {
-      count++;
-      date = addDaysToDateString(date, -1);
-    }
-    streaks.set(sellerId, count);
+  for (const id of latest) {
+    let date = addDaysToDateString(today, -1), count = 0;
+    while (byDate.get(date)?.includes(id)) { count++; date = addDaysToDateString(date, -1); }
+    streaks.set(id, count);
   }
   return streaks;
 }
@@ -183,7 +175,8 @@ export function buildSalesBoardSnapshot(params: {
   dateFilter: DateRangeFilter;
   dataSource: "supabase" | "demo-local";
   movements?: SalesBoardSnapshot["movements"];
-  streakSales?: Pick<DailySaleRecord, "seller_id" | "sale_date" | "units_sold">[];
+  leadershipClosures?: { closure_date: string; leader_ids: string[] }[];
+  dayOffSellerIds?: string[];
   streakToday?: string;
 }): SalesBoardSnapshot {
   const { settings, sellers, dailySales, dateFilter, dataSource, movements } = params;
@@ -297,8 +290,9 @@ export function buildSalesBoardSnapshot(params: {
     monthCount
   );
 
-  const streaks = calculateStreaks(params.streakSales ?? dailySales, params.streakToday ?? getSantoDomingoToday());
-  for (const item of rankedSellers) item.streakDays = streaks.get(item.seller.id) ?? 0;
+  const streaks = calculateLeadershipStreaks(params.leadershipClosures ?? [], params.streakToday ?? getSantoDomingoToday());
+  const offIds = new Set(params.dayOffSellerIds ?? []);
+  for (const item of rankedSellers) { item.streakDays = streaks.get(item.seller.id) ?? 0; item.isDayOff = offIds.has(item.seller.id); }
 
   // 5. Construir lista completa para el panel administrativo (todos los vendedores activos Primero, luego inactivos)
   const allSellersAdminTable = computeRankedSellerStats(

@@ -103,6 +103,7 @@ export interface RankedSellerStat {
   seller: Seller;
   unitsSold: number;
   streakDays?: number;
+  isDayOff?: boolean;
   effectiveGoal: number;
   goalCompletionPercent: number;
   isGoalCompleted: boolean;
