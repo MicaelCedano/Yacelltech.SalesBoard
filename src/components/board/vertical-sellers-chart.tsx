@@ -63,6 +63,36 @@ export function VerticalSellersChart({
                   <div className="seller-identity">
                     <div className="seller-avatar-wrap">
                       <AvatarBadge className="seller-avatar" src={item.seller.avatar_url} name={item.seller.full_name} size="tv" />
+                      {showStreaks && item.rank === 1 && (item.streakDays ?? 0) >= 3 && (
+                        <svg className="seller-laurel" viewBox="0 0 140 112" aria-hidden="true" focusable="false">
+                          <g className="seller-laurel-branch" transform="translate(-4 0)">
+                            <path className="seller-laurel-stem" d="M42 101C22 91 13 69 18 43C20 32 25 20 32 11" />
+                            <path d="M31 17C26 7 29 2 38 0C40 8 36 14 31 17Z" />
+                            <path d="M25 31C15 28 12 21 14 13C22 15 27 21 25 31Z" />
+                            <path d="M23 40C24 30 29 25 36 24C37 32 32 38 23 40Z" />
+                            <path d="M19 49C10 46 7 38 9 31C17 33 21 40 19 49Z" />
+                            <path d="M20 58C21 48 26 43 34 43C34 51 29 57 20 58Z" />
+                            <path d="M20 67C11 66 6 59 7 51C15 52 21 58 20 67Z" />
+                            <path d="M24 76C23 66 28 60 36 58C38 66 33 73 24 76Z" />
+                            <path d="M27 83C18 84 12 78 11 70C19 70 26 75 27 83Z" />
+                            <path d="M35 92C31 83 34 76 41 72C45 79 43 87 35 92Z" />
+                            <path d="M38 99C30 102 22 98 19 91C27 89 34 92 38 99Z" />
+                          </g>
+                          <g className="seller-laurel-branch" transform="translate(144 0) scale(-1 1)">
+                            <path className="seller-laurel-stem" d="M42 101C22 91 13 69 18 43C20 32 25 20 32 11" />
+                            <path d="M31 17C26 7 29 2 38 0C40 8 36 14 31 17Z" />
+                            <path d="M25 31C15 28 12 21 14 13C22 15 27 21 25 31Z" />
+                            <path d="M23 40C24 30 29 25 36 24C37 32 32 38 23 40Z" />
+                            <path d="M19 49C10 46 7 38 9 31C17 33 21 40 19 49Z" />
+                            <path d="M20 58C21 48 26 43 34 43C34 51 29 57 20 58Z" />
+                            <path d="M20 67C11 66 6 59 7 51C15 52 21 58 20 67Z" />
+                            <path d="M24 76C23 66 28 60 36 58C38 66 33 73 24 76Z" />
+                            <path d="M27 83C18 84 12 78 11 70C19 70 26 75 27 83Z" />
+                            <path d="M35 92C31 83 34 76 41 72C45 79 43 87 35 92Z" />
+                            <path d="M38 99C30 102 22 98 19 91C27 89 34 92 38 99Z" />
+                          </g>
+                        </svg>
+                      )}
                       {item.rank === 1 && (
                         <span className="seller-leader-badge" role="img" aria-label={item.isTied ? "Primer lugar compartido" : "Primer lugar"}>
                           <Crown fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
