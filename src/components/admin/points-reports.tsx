@@ -467,6 +467,7 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
                 staticDisplay={false}
               />
               <VerticalSellersChart
+                showDaysOff={false}
                 goalMonths={boardSnapshot.goalMonths}
                 prizeName={boardSnapshot.settings.monthly_seller_prize_name}
                 prizeValue={boardSnapshot.settings.monthly_seller_prize_value}

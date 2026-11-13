@@ -13,9 +13,11 @@ export function VerticalSellersChart({
   prizeName,
   prizeValue,
   showStreaks = false,
+  showDaysOff = true,
 }: {
   sellers: RankedSellerStat[];
   showStreaks?: boolean;
+  showDaysOff?: boolean;
   title?: string;
   staticDisplay?: boolean;
   goalMonths?: number;
@@ -33,7 +35,7 @@ export function VerticalSellersChart({
     <section className="sellers-chart" aria-label="Gráfico vertical de puntos por vendedor">
       <div className="chart-heading">
         <h1>{title}</h1>
-        <span>{sellers.length - offCount} trabajando · {offCount} {offCount === 1 ? "de día libre" : "de día libre"}</span>
+        {showDaysOff && <span>{sellers.length - offCount} trabajando · {offCount} de día libre</span>}
       </div>
       {sellers.length === 0 ? (
         <div className="chart-empty">
@@ -102,7 +104,7 @@ export function VerticalSellersChart({
                     <div className="seller-name">
                       <h2 title={item.seller.full_name}>{item.seller.full_name}</h2>
                     </div>
-                    {item.isDayOff && <span className="seller-day-off"><Moon size={13} aria-hidden="true" /> Día libre</span>}
+                    {showDaysOff && item.isDayOff && <span className="seller-day-off"><Moon size={13} aria-hidden="true" /> Día libre</span>}
                     {showStreaks && item.rank === 1 && (item.streakDays ?? 0) >= 3 && (
                       <span className="seller-streak" aria-label={`${item.streakDays} días consecutivos en primer lugar`}>
                         <Flame size={14} fill="currentColor" aria-hidden="true" /> Racha: {item.streakDays} días
