@@ -10,6 +10,8 @@ import { saveBatchDailySales, fetchSalesBoardSnapshot, updateManagerSettingsReco
 import { batchSaveDailySalesSchema, updateManagerSettingsSchema } from "@/lib/validations";
 import { addDaysToDateString, getFirstDayOfMonth, getSantoDomingoToday } from "@/lib/date-utils";
 
+const getCurrentDaysOff = () => getDaysOff(new Request("http://localhost/api/admin/days-off"));
+
 vi.mock("@/lib/supabase/server", () => ({ verifyServerAdminSession: vi.fn(), getSupabaseServerClient: vi.fn() }));
 vi.mock("@/lib/demo-store", async (original) => ({ ...await original<typeof import("@/lib/demo-store")>(), readDemoDatabase: vi.fn(), writeDemoDatabase: vi.fn() }));
 beforeEach(() => {
@@ -20,6 +22,22 @@ beforeEach(() => {
 });
 
 describe("Permisos, validación y sumas locales", () => {
+  it("consulta el horario vigente en la fecha y respeta excepciones sin inventar fechas antiguas", async () => {
+    const db = readDemoDatabase();
+    const seller = db.sellers[0]!;
+    db.weeklyDaysOffHistory = [
+      { seller_id: seller.id, effective_date: "2026-11-01", weekday: 3 },
+      { seller_id: seller.id, effective_date: "2026-11-06", weekday: 4 },
+    ];
+    db.weeklyDaysOff = { [seller.id]: 4 };
+    db.dayOffOverrides = { [`${seller.id}:2026-11-04`]: false, [`${seller.id}:2026-10-28`]: true };
+    const query = async (date: string) => (await (await getDaysOff(new Request(`http://localhost/api/admin/days-off?date=${date}`))).json()).status[seller.id];
+    expect(await query("2026-10-27")).toBeNull();
+    expect(await query("2026-10-28")).toBe(true);
+    expect(await query("2026-11-04")).toBe(false);
+    expect(await query("2026-11-05")).toBe(false);
+    expect(await query("2026-11-12")).toBe(true);
+  });
   it("suma el aporte del Manager una sola vez a la meta global y lo registra en el historial", async () => {
     const db = readDemoDatabase();
     const manager = db.sellers.find((seller) => seller.is_manager)!;
@@ -61,20 +79,20 @@ describe("Permisos, validación y sumas locales", () => {
     }));
     expect((await save(8)).status).toBe(400);
     expect((await save(7)).status).toBe(200);
-    expect(await (await getDaysOff()).json()).toMatchObject({ daysOff: { [seller.id]: 7 } });
+    expect(await (await getCurrentDaysOff()).json()).toMatchObject({ daysOff: { [seller.id]: 7 } });
     expect((await save(null)).status).toBe(200);
-    expect(await (await getDaysOff()).json()).toMatchObject({ daysOff: { [seller.id]: null } });
+    expect(await (await getCurrentDaysOff()).json()).toMatchObject({ daysOff: { [seller.id]: null } });
     const mark = (is_off: boolean, date = getSantoDomingoToday()) => saveTodayOff(new Request("http://localhost/api/admin/days-off", { method: "POST", body: JSON.stringify({ seller_id: seller.id, is_off, date }) }));
     const pointsBefore = structuredClone(readDemoDatabase().dailySales);
     expect((await mark(true)).status).toBe(200);
-    expect((await (await getDaysOff()).json()).todayOff[seller.id]).toBe(true);
+    expect((await (await getCurrentDaysOff()).json()).todayOff[seller.id]).toBe(true);
     expect(readDemoDatabase().dailySales).toEqual(pointsBefore);
     expect((await mark(false)).status).toBe(200);
-    expect((await (await getDaysOff()).json()).todayOff[seller.id]).toBe(false);
+    expect((await (await getCurrentDaysOff()).json()).todayOff[seller.id]).toBe(false);
     expect((await mark(true, "2000-01-01")).status).toBe(400);
     vi.mocked(verifyServerAdminSession).mockResolvedValue({ isAdmin: false, userId: null, email: null, mode: "demo-local" });
     expect((await mark(true)).status).toBe(403);
-    expect((await getDaysOff()).status).toBe(403);
+    expect((await getCurrentDaysOff()).status).toBe(403);
     expect((await save(1)).status).toBe(403);
   });
 

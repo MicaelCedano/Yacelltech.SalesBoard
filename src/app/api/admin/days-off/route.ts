@@ -5,13 +5,44 @@ import { getSantoDomingoToday } from "@/lib/date-utils";
 import { z } from "zod";
 import { weeklyDayOffSchema } from "@/lib/validations";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await verifyServerAdminSession();
     if (!session.isAdmin) return NextResponse.json({ error: "No autorizado" }, { status: 403 });
 
     const supabase = await getSupabaseServerClient();
     const today = getSantoDomingoToday();
+    const date = new URL(request.url).searchParams.get("date");
+    if (date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today || Number.isNaN(Date.parse(`${date}T00:00:00Z`)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) return NextResponse.json({ error: "Fecha inválida." }, { status: 400 });
+      const weekday = new Date(`${date}T12:00:00Z`).getUTCDay() || 7;
+      if (!supabase) {
+        const db = readDemoDatabase();
+        const status: Record<string, boolean | null> = {};
+        for (const seller of db.sellers.filter(s => !s.is_manager)) {
+          const history = (db.weeklyDaysOffHistory ?? []).filter(h => h.seller_id === seller.id && h.effective_date <= date).sort((a, b) => b.effective_date.localeCompare(a.effective_date))[0];
+          const override = db.dayOffOverrides?.[`${seller.id}:${date}`];
+          status[seller.id] = override ?? (date === today ? db.weeklyDaysOff?.[seller.id] === weekday : history ? history.weekday === weekday : null);
+        }
+        return NextResponse.json({ date, status });
+      }
+      const [history, overrides] = await Promise.all([
+        supabase.from("seller_weekly_days_off_history").select("seller_id,effective_date,weekday").lte("effective_date", date).order("effective_date", { ascending: false }).order("seller_id").range(0, 999),
+        supabase.from("seller_day_off_overrides").select("seller_id,is_off").eq("off_date", date),
+      ]);
+      if (history.error || overrides.error) throw new Error("No se pudo consultar el historial de días libres.");
+      const status: Record<string, boolean> = {};
+      let rows = history.data ?? [];
+      for (let offset = 0; rows.length; offset += 1000) {
+        for (const row of rows) if (!(row.seller_id in status)) status[row.seller_id] = row.weekday === weekday;
+        if (rows.length < 1000) break;
+        const page = await supabase.from("seller_weekly_days_off_history").select("seller_id,effective_date,weekday").lte("effective_date", date).order("effective_date", { ascending: false }).order("seller_id").range(offset + 1000, offset + 1999);
+        if (page.error) throw new Error("No se pudo consultar el historial de días libres.");
+        rows = page.data ?? [];
+      }
+      for (const row of overrides.data ?? []) status[row.seller_id] = row.is_off;
+      return NextResponse.json({ date, status });
+    }
     if (!supabase) {
       const db = readDemoDatabase();
       const weekday = new Date(`${today}T12:00:00Z`).getUTCDay() || 7;
@@ -50,6 +81,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: "Vendedor no encontrado." }, { status: 404 });
       }
       db.weeklyDaysOff = { ...db.weeklyDaysOff, [seller_id]: weekday };
+      const effective_date = getSantoDomingoToday();
+      db.weeklyDaysOffHistory = [...(db.weeklyDaysOffHistory ?? []).filter(h => h.seller_id !== seller_id || h.effective_date !== effective_date), { seller_id, weekday, effective_date }];
       writeDemoDatabase(db);
     }
 

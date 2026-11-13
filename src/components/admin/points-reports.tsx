@@ -137,6 +137,7 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
   const [endDate, setEndDate] = useState(today);
   const [report, setReport] = useState<PointsReport | null>(null);
   const [boardSnapshot, setBoardSnapshot] = useState<SalesBoardSnapshot | null>(null);
+  const [dayOffStatuses, setDayOffStatuses] = useState<Record<string, boolean | null> | null>(null);
   const [busy, setBusy] = useState<"json" | "xlsx" | null>(null);
   const [error, setError] = useState("");
   const [exported, setExported] = useState(false);
@@ -194,14 +195,19 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
         }
         if (format === "json") {
           setReport(await response.json());
+          setBoardSnapshot(null);
+          setDayOffStatuses(null);
           try {
-            const boardRes = await fetch(
-              `/api/board?preset=custom&startDate=${rangeStart}&endDate=${rangeEnd}`,
-              { cache: "no-store" }
-            );
+            const [boardRes, daysOffRes] = await Promise.all([
+              fetch(`/api/board?preset=custom&startDate=${rangeStart}&endDate=${rangeEnd}`, { cache: "no-store" }),
+              rangeStart === rangeEnd && rangeEnd <= today
+                ? fetch(`/api/admin/days-off?date=${rangeStart}`, { cache: "no-store" })
+                : Promise.resolve(null),
+            ]);
             if (boardRes.ok) {
               setBoardSnapshot((await boardRes.json()) as SalesBoardSnapshot);
             }
+            if (daysOffRes?.ok) setDayOffStatuses((await daysOffRes.json()).status);
           } catch {
             // Ignorar error secundario al cargar tablero
           }
@@ -230,7 +236,7 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
         setBusy(null);
       }
     },
-    [startDate, endDate, selectedSellerId, report]
+    [startDate, endDate, selectedSellerId, report, today]
   );
 
   useEffect(() => {
@@ -467,7 +473,8 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
                 staticDisplay={false}
               />
               <VerticalSellersChart
-                showDaysOff={false}
+                showDaysOff={dayOffStatuses !== null}
+                dayOffStatuses={dayOffStatuses ?? undefined}
                 goalMonths={boardSnapshot.goalMonths}
                 prizeName={boardSnapshot.settings.monthly_seller_prize_name}
                 prizeValue={boardSnapshot.settings.monthly_seller_prize_value}
@@ -475,6 +482,8 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
                 staticDisplay={false}
                 title={`Ranking de puntos · ${boardSnapshot.dateFilter.label}`}
               />
+              {report.startDate === report.endDate && !dayOffStatuses && <p className="text-sm text-secondary">No se pudo consultar el registro de días libres para esta fecha.</p>}
+              {dayOffStatuses && boardSnapshot.rankedSellers.some(item => dayOffStatuses[item.seller.id] == null) && <p className="text-sm text-secondary">Sin registro: no hay información suficiente para confirmar el día libre de esa persona en esta fecha.</p>}
             </div>
           )}
 

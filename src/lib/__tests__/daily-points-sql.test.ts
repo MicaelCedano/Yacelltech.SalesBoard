@@ -51,6 +51,25 @@ beforeEach(async () => {
 afterAll(async () => { await db?.close(); });
 
 describe("Guardado atómico en PostgreSQL", () => {
+  it("conserva cambios del horario por fecha y limita la lectura a administradores", async () => {
+    await db.exec("reset role; begin");
+    try {
+      await db.exec("create role service_role");
+      await db.exec(readFileSync("supabase/migrations/20261111000309_manager_points_and_weekly_days_off.sql", "utf8"));
+      await db.exec(readFileSync("supabase/migrations/20261113003330_historical_days_off.sql", "utf8"));
+      await db.exec(`update public.seller_weekly_days_off_history set effective_date = (now() at time zone 'America/Santo_Domingo')::date - 1 where seller_id='${SELLER}';
+        insert into public.seller_weekly_days_off(seller_id,weekday) values ('${SELLER}', 3);
+        update public.seller_weekly_days_off set weekday=4 where seller_id='${SELLER}';
+        set role authenticated`);
+      const rows = (await db.query<{ weekday: number | null }>(`select weekday from public.seller_weekly_days_off_history where seller_id='${SELLER}' order by effective_date`)).rows;
+      expect(rows).toEqual([{ weekday: null }, { weekday: 4 }]);
+      await db.exec(`select set_config('request.jwt.claim.sub','${VIEWER}',false)`);
+      expect((await db.query("select * from public.seller_weekly_days_off_history")).rows).toEqual([]);
+      await db.exec("reset role; set role anon; savepoint denied");
+      await expect(db.query("select * from public.seller_weekly_days_off_history")).rejects.toThrow("permission denied");
+      await db.exec("rollback to savepoint denied");
+    } finally { await db.exec("rollback; reset role"); }
+  });
   it("precarga los ocho días libres, restringe su acceso y registra puntos del Manager en la misma operación", async () => {
     await db.exec("reset role; begin");
     try {

@@ -16,6 +16,7 @@ export interface LocalDemoDatabase {
   dailyGoals: DailyGoalRecord[];
   auditLogs: AuditLogEntry[];
   weeklyDaysOff?: Record<string, number | null>;
+  weeklyDaysOffHistory?: { seller_id: string; effective_date: string; weekday: number | null }[];
   dayOffOverrides?: Record<string, boolean>;
   leadershipClosures?: { closure_date: string; leader_ids: string[] }[];
 }

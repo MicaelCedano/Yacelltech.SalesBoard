@@ -14,10 +14,12 @@ export function VerticalSellersChart({
   prizeValue,
   showStreaks = false,
   showDaysOff = true,
+  dayOffStatuses,
 }: {
   sellers: RankedSellerStat[];
   showStreaks?: boolean;
   showDaysOff?: boolean;
+  dayOffStatuses?: Record<string, boolean | null>;
   title?: string;
   staticDisplay?: boolean;
   goalMonths?: number;
@@ -28,14 +30,15 @@ export function VerticalSellersChart({
   const reducedMotion = staticDisplay || prefersReducedMotion;
   const cleanPrizeName = (prizeName ?? "").trim();
   const cleanPrizeValue = Math.max(0, Math.floor(prizeValue ?? 0));
-  const offCount = sellers.filter((item) => item.isDayOff).length;
+  const offCount = sellers.filter((item) => dayOffStatuses ? dayOffStatuses[item.seller.id] === true : item.isDayOff).length;
+  const hasUnknownDaysOff = dayOffStatuses && sellers.some(item => dayOffStatuses[item.seller.id] == null);
   const hasPrize = Boolean(cleanPrizeName) || cleanPrizeValue > 0;
 
   return (
     <section className="sellers-chart" aria-label="Gráfico vertical de puntos por vendedor">
       <div className="chart-heading">
         <h1>{title}</h1>
-        {showDaysOff && <span>{sellers.length - offCount} trabajando · {offCount} de día libre</span>}
+        {showDaysOff && !hasUnknownDaysOff && <span>{sellers.length - offCount} trabajando · {offCount} de día libre</span>}
       </div>
       {sellers.length === 0 ? (
         <div className="chart-empty">
@@ -104,7 +107,8 @@ export function VerticalSellersChart({
                     <div className="seller-name">
                       <h2 title={item.seller.full_name}>{item.seller.full_name}</h2>
                     </div>
-                    {showDaysOff && item.isDayOff && <span className="seller-day-off"><Moon size={13} aria-hidden="true" /> Día libre</span>}
+                    {showDaysOff && (dayOffStatuses ? dayOffStatuses[item.seller.id] === true : item.isDayOff) && <span className="seller-day-off"><Moon size={13} aria-hidden="true" /> Día libre</span>}
+                    {showDaysOff && dayOffStatuses && dayOffStatuses[item.seller.id] == null && <span className="seller-day-off">Sin registro</span>}
                     {showStreaks && item.rank === 1 && (item.streakDays ?? 0) >= 3 && (
                       <span className="seller-streak" aria-label={`${item.streakDays} días consecutivos en primer lugar`}>
                         <Flame size={14} fill="currentColor" aria-hidden="true" /> Racha: {item.streakDays} días
