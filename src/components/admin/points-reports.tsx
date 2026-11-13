@@ -138,6 +138,8 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
   const [report, setReport] = useState<PointsReport | null>(null);
   const [boardSnapshot, setBoardSnapshot] = useState<SalesBoardSnapshot | null>(null);
   const [dayOffStatuses, setDayOffStatuses] = useState<Record<string, boolean | null> | null>(null);
+  const [dayOffDate, setDayOffDate] = useState(today);
+  const [dayOffError, setDayOffError] = useState("");
   const [busy, setBusy] = useState<"json" | "xlsx" | null>(null);
   const [error, setError] = useState("");
   const [exported, setExported] = useState(false);
@@ -197,17 +199,12 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
           setReport(await response.json());
           setBoardSnapshot(null);
           setDayOffStatuses(null);
+          setDayOffDate(rangeEnd <= today ? rangeEnd : today);
           try {
-            const [boardRes, daysOffRes] = await Promise.all([
-              fetch(`/api/board?preset=custom&startDate=${rangeStart}&endDate=${rangeEnd}`, { cache: "no-store" }),
-              rangeStart === rangeEnd && rangeEnd <= today
-                ? fetch(`/api/admin/days-off?date=${rangeStart}`, { cache: "no-store" })
-                : Promise.resolve(null),
-            ]);
+            const boardRes = await fetch(`/api/board?preset=custom&startDate=${rangeStart}&endDate=${rangeEnd}`, { cache: "no-store" });
             if (boardRes.ok) {
               setBoardSnapshot((await boardRes.json()) as SalesBoardSnapshot);
             }
-            if (daysOffRes?.ok) setDayOffStatuses((await daysOffRes.json()).status);
           } catch {
             // Ignorar error secundario al cargar tablero
           }
@@ -243,6 +240,21 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
     void generate("json", startDate, endDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!report || dayOffDate < report.startDate || dayOffDate > report.endDate || dayOffDate > today) return;
+    const controller = new AbortController();
+    setDayOffStatuses(null);
+    setDayOffError("");
+    void fetch(`/api/admin/days-off?date=${dayOffDate}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (!controller.signal.aborted) setDayOffStatuses(data.status);
+      })
+      .catch(() => { if (!controller.signal.aborted) setDayOffError("No se pudieron consultar los días libres de esta fecha."); });
+    return () => controller.abort();
+  }, [report, dayOffDate, today]);
 
   const applyQuickRange = (nextStart: string, nextEnd: string) => {
     setStartDate(nextStart);
@@ -472,6 +484,11 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
                 manager={boardSnapshot.manager}
                 staticDisplay={false}
               />
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-separator bg-surface px-5 py-3 text-sm">
+                <label htmlFor="history-day-off-date" className="font-semibold text-foreground">Días libres del día:</label>
+                <input id="history-day-off-date" type="date" value={dayOffDate} min={report.startDate} max={report.endDate < today ? report.endDate : today} disabled={report.startDate > today} onChange={(event) => setDayOffDate(event.target.value)} className="h-9 rounded-lg border border-separator bg-muted px-3 text-sm text-foreground" />
+                <span className="text-xs text-secondary">El ranking muestra los puntos del período seleccionado.</span>
+              </div>
               <VerticalSellersChart
                 showDaysOff={dayOffStatuses !== null}
                 dayOffStatuses={dayOffStatuses ?? undefined}
@@ -482,7 +499,7 @@ export function PointsReports({ onSelectDateForEditing }: PointsReportsProps = {
                 staticDisplay={false}
                 title={`Ranking de puntos · ${boardSnapshot.dateFilter.label}`}
               />
-              {report.startDate === report.endDate && !dayOffStatuses && <p className="text-sm text-secondary">No se pudo consultar el registro de días libres para esta fecha.</p>}
+              {dayOffError && <p role="alert" className="text-sm text-secondary">{dayOffError}</p>}
               {dayOffStatuses && boardSnapshot.rankedSellers.some(item => dayOffStatuses[item.seller.id] == null) && <p className="text-sm text-secondary">Sin registro: no hay información suficiente para confirmar el día libre de esa persona en esta fecha.</p>}
             </div>
           )}
